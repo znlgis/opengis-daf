@@ -251,8 +251,8 @@
 
 ## 7. 技术与实现约束
 
-- 技术栈基于 C# / .NET 8
-- GIS 能力基于 NetTopologySuite
+- 技术栈基于 C# / .NET 10
+- GIS 能力基于 [OpenGIS Utils for .NET](https://github.com/znlgis/opengis-utils-for-net) 
 - 方案配置以 JSON Schema 为主
 - 依赖注入采用 Microsoft.Extensions.DependencyInjection
 - 日志采用 Microsoft.Extensions.Logging
