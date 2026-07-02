@@ -116,7 +116,9 @@
 - 按分类和能力检索算子
 - 管理算子版本
 
-注册方式：
+**发现与注册机制：** 算子通过主动导入的方式被发现和注册，而非启动时自动扫描目录。具体流程：(1) 用户在插件管理界面或配置文件中明确指定要加载的算子 DLL；(2) 框架在导入时通过反射发现实现了 `IOperator` 接口的类型，读取其元数据；(3) 验证兼容性后将算子注册到算子池。这种方式将"哪些算子可用"的控制权交给使用者，避免自动扫描带来的管理混乱和安全风险。
+
+注册方式（DI 容器集成）：
 
 ```csharp
 services.AddOperatorsFromAssembly(typeof(BufferOperator).Assembly);
@@ -164,7 +166,7 @@ public sealed record OperatorMetadata
     public string Version { get; init; }             // 语义化版本号，如 "1.2.0"
     public string? MinFrameworkVersion { get; init; } // 最低框架版本要求
     public string? CompatibilityNotes { get; init; }  // 兼容性说明
-    public bool SupportsIncremental { get; init; } = false; // 是否支持增量计算
+    public bool SupportsIncremental { get; init; } = false; // 是否支持增量计算（后期功能，定义待进一步明确）
     public IReadOnlyList<ParameterDefinition> Parameters { get; init; }
     public InputSchema InputSchema { get; init; }
     public OutputSchema OutputSchema { get; init; }
@@ -210,7 +212,7 @@ plugins/spatial/
 
 #### 5.1.4 插件组织管理
 
-**目录结构：** 插件按功能领域分目录存放，支持两级以内嵌套：
+**目录结构：** 插件按功能领域分目录存放，便于管理和维护。目录本身仅作为物理组织手段，不决定插件的加载行为——插件通过主动导入机制被发现，而非启动时自动扫描。导入时框架解析指定路径的 DLL，读取元数据并验证兼容性后注册到算子池。
 
 ```text
 plugins/
@@ -220,7 +222,7 @@ plugins/
   custom/            # 自定义/第三方算子
 ```
 
-框架启动时递归扫描 `plugins/` 目录及子目录，自动发现并注册符合规范的 DLL。
+> **设计决策：** 不采用"启动时自动扫描插件目录"的方案。自动扫描虽然简化了部署流程，但会引入安全风险（恶意 DLL 放入目录即被加载）和管理混乱（无法精确控制哪些插件生效）。主动导入方式将加载决策权交给使用者，同时保留目录结构作为物理组织手段——两者互不冲突。
 
 **插件查询 API：**
 
@@ -744,6 +746,8 @@ public sealed record FieldDefinition
 
 public enum FieldType { String, Integer, Double, DateTime, Boolean, Geometry }
 
+// 注意：枚举值通过 System.Text.Json 序列化时需配置 JsonStringEnumConverter
+// 以输出字符串形式（如 "Point"）而非数字，否则 JSON 输出不可读
 public enum GeometryType { Point, MultiPoint, LineString, MultiLineString, Polygon, MultiPolygon, GeometryCollection }
 
 // Input binding (used in DAG construction)
@@ -764,7 +768,11 @@ public sealed record ValidationError
 {
     public string Code { get; init; }
     public string Message { get; init; }
-    public string? Location { get; init; }  // which field/path in the config
+    /// <summary>
+    /// 错误定位位置。配置校验时为字段路径（如 "items[0].parameters.tolerance"）；
+    /// 质检场景下应更细化到具体的要素 ID 和坐标位置，便于快速定位问题要素。
+    /// </summary>
+    public string? Location { get; init; }
 }
 
 // Feature source metadata
@@ -829,6 +837,11 @@ public sealed record ExecutionMetadata
     public string PlanId { get; init; }
     public string PlanVersion { get; init; }
     public string OperatorVersion { get; init; }
+    /// <summary>
+    /// 数据源版本：指数据源自身的版本标识（非数据库软件版本）。
+    /// 例如质检场景中数据按批次提交——V1、V2——用于区分同一方案对不同版本数据的执行结果。
+    /// 分析场景中通常仅有一个版本，该字段可选。
+    /// </summary>
     public string DataSourceVersion { get; init; }
     public DateTimeOffset ExecutionTime { get; init; }
 }
@@ -874,6 +887,8 @@ public sealed record ResourceUsage
 ```
 
 ### 6.8 错误码定义
+
+> 以下为初始错误码集合，覆盖四大类错误的常见场景。实际开发过程中应根据算子实现、数据源适配和运行时场景持续补充，此集合作为起点而非终点。
 
 ```csharp
 public static class ErrorCode
@@ -951,6 +966,8 @@ public sealed class GlobalConcurrencyPolicy
 
 ## 7. 执行模型设计
 
+> **实现建议：** 调度层优先使用成熟的调度框架（如 TPL Dataflow、Microsoft Orleans、Quartz.NET 等），而非从零实现。自建调度器在分布式场景下需要处理任务分发、故障恢复、状态持久化等一系列复杂问题，投入产出比较低。第一阶段可采用 `System.Threading.Channels` + `SemaphoreSlim` 实现简单的单机并发调度，后续按需引入成熟的调度框架。
+
 ### 7.1 DAG 构建
 
 执行流程：
@@ -967,6 +984,8 @@ public sealed class GlobalConcurrencyPolicy
 - 不同层按依赖顺序执行
 - 并行度由 `PlanConfig.MaxParallelism` 控制
 - 调度器负责资源分配、状态更新和失败传播
+
+> **首版简化策略：** 第一阶段（Phase 1）优先实现简单的串联执行——分析项按 DAG 拓扑顺序依次执行，不启用并行和分布式调度。组通串联链路是最基本的目标，复杂的串并联编排、跨节点分区调度和动态并发调整留给后续迭代。`PlanExecutionPolicy` 中的 `MaxParallelism`、`EnablePartitioning` 等字段虽在设计模型中保留，但首版不强制实现。
 
 ### 7.3 执行上下文
 
@@ -1260,6 +1279,8 @@ PlanVersion + OperatorVersion + DataSourceVersion + ExecutionTime
 ```
 
 **追溯模型：**
+
+> **关于 DataSourceVersion 的说明：** 数据源版本指数据源自身的版本标识（非数据库软件版本，如 PostGIS 14 vs 15）。其典型场景是质检批次管理——同一数据生产者可能分批次提交数据（如 V1、V2、V3），每次提交视为一个数据源版本。框架通过 `ExecutionMetadata.DataSourceVersion` 记录每次执行所对应的数据源版本，从而支撑跨版本的质检结果对比和数据质量趋势分析。对于分析场景，数据源版本通常为空或固定值。
 
 ```csharp
 public sealed record VersionTraceRecord
