@@ -16,6 +16,12 @@ public static class JsonConfiguration
         }
     };
 
+    /// <summary>
+    /// Creates a customized copy of DefaultOptions. The returned instance
+    /// should be cached and reused — creating new JsonSerializerOptions
+    /// frequently degrades performance due to metadata rebuilds.
+    /// Prefer DefaultOptions directly when no customization is needed.
+    /// </summary>
     public static JsonSerializerOptions Create(Action<JsonSerializerOptions>? configure = null)
     {
         var options = new JsonSerializerOptions(DefaultOptions);

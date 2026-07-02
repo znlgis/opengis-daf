@@ -17,9 +17,8 @@ public static class ExceptionHandler
             else
             {
                 Console.Error.WriteLine($"[Critical] Unhandled exception: {message}");
-                if (ex != null) Console.Error.WriteLine(ex.StackTrace);
+                if (ex != null) Console.Error.WriteLine(ex.ToString());
             }
-            Environment.Exit(1);
         };
 
         TaskScheduler.UnobservedTaskException += (sender, args) =>
@@ -33,7 +32,7 @@ public static class ExceptionHandler
             else
             {
                 Console.Error.WriteLine($"[Error] Unobserved task exception: {message}");
-                Console.Error.WriteLine(args.Exception.StackTrace);
+                Console.Error.WriteLine(args.Exception.ToString());
             }
             args.SetObserved();
         };
