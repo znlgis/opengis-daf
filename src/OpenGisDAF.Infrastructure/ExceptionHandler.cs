@@ -15,7 +15,8 @@ public static class ExceptionHandler
 
         TaskScheduler.UnobservedTaskException += (sender, args) =>
         {
-            logger?.LogError(args.Exception, "Unobserved task exception: {Message}", args.Exception.Message);
+            var innerEx = args.Exception.Flatten().InnerException;
+            logger?.LogError(args.Exception, "Unobserved task exception: {Message}", innerEx?.Message ?? args.Exception.Message);
             args.SetObserved();
         };
     }

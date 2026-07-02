@@ -5,7 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
-    <NoWarn>CS8618;CA1720;CA1805</NoWarn>
+    <NoWarn>CA1720;CA1805</NoWarn>
     <Description>OpenGIS DAF 核心接口与领域模型程序集</Description>
     <PackageTags>GIS;Analysis;Framework;Core</PackageTags>
   </PropertyGroup>

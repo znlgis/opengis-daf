@@ -16,7 +16,7 @@ public class HostBuilder
 
     public HostBuilder ConfigureLogging(Action<ILoggingBuilder> configure)
     {
-        _loggingConfig = configure;
+        _loggingConfig += configure;
         return this;
     }
 

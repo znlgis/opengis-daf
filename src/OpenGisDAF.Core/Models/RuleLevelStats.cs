@@ -2,7 +2,7 @@ namespace OpenGisDAF.Core;
 
 public sealed record RuleLevelStats
 {
-    public string RuleId { get; init; }
+    public string RuleId { get; init; } = null!;
     public long TotalChecked { get; init; }
     public long Passed { get; init; }
     public long Failed { get; init; }
