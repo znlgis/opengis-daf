@@ -48,6 +48,7 @@
 - 方案配置在执行期间保持不可变，保证可追溯性。执行中创建新版本不影响正在运行的旧版本实例；框架仅标记结果所属版本，不裁决不同版本结果的有效性。
 - 数据流依赖必须可构建为有向无环图（DAG），否则方案校验阶段直接拒绝。
 - 核心框架不依赖任何 GUI 组件，纯控制台/服务化运行。所有交互通过 API、CLI 或配置文件完成。
+- 所有 `IFeatureSource` 实现需正确释放底层资源（数据库连接、文件句柄等），通过 `IAsyncDisposable` 接口保证资源生命周期管理。
 
 ## 3. 领域模型设计
 
@@ -121,7 +122,6 @@
 注册方式（DI 容器集成）：
 
 ```csharp
-services.AddOperatorsFromAssembly(typeof(BufferOperator).Assembly);
 services.AddOperator<BufferOperator>("spatial.buffer");
 services.AddOperator<IntersectOperator>("spatial.intersect");
 ```
@@ -421,6 +421,8 @@ public sealed record DryRunCheck
 | WfsAdapter | OGC WFS | 优先支持读取，写入由上层业务系统控制 |
 | InMemoryAdapter | 中间结果缓存 | 内存缓存，支持溢出到临时文件 |
 | RestApiAdapter | REST API / Web API | 外部 HTTP 接口适配，注意可控性较低 |
+| CsvAdapter | CSV | 支持通过配置指定经纬度列名（或 WKT 几何列），自动解析为点要素 | Phase 2 |
+| GeoPackageAdapter | GeoPackage | OGC 标准格式，支持矢量读写和空间索引 | Phase 2 |
 
 统一要求：
 
@@ -437,7 +439,7 @@ public sealed record DryRunCheck
 1. 收集方案中所有数据源的 CRS 声明
 2. 若所有 CRS 一致，直接进入执行
 3. 若存在不一致，检查方案是否配置了转换目标 CRS
-4. 若已配置，通过 ProjNet 自动执行投影转换（生成转换后的 `InMemoryAdapter`）
+4. 若已配置，通过 GDAL 内置 OSR 自动执行投影转换（NTS 场景下可选配 ProjNet）（生成转换后的 `InMemoryAdapter`）
 5. 若未配置，方案校验时给出 Warning 提示
 
 **字段映射机制：** 不同数据源的字段命名和类型体系各不相同。适配器内部维护原始字段到框架统一字段的映射表：
@@ -456,6 +458,8 @@ public sealed class FieldMapping
 字段映射由适配器在初始化时建立，上层算子通过统一字段名访问属性，无需处理不同数据源的命名差异。
 
 **过滤条件下推策略：**
+
+> **filterExpression 语法**：采用类 SQL WHERE 子句的简化语法，支持的最小谓词集合包括：`Equals`（=）、`NotEquals`（!=）、`GreaterThan`（>）、`LessThan`（<）、`Contains`（LIKE）、`And`（AND）、`Or`（OR）。示例：`"area > 1000 AND name LIKE '北京%'"`。不支持子查询和函数调用。各适配器根据自身能力决定是否支持原生下推，不支持的条件由框架在内存中回退执行。
 
 | 过滤类型 | 下推方式 | 适用数据源 |
 |----------|----------|-----------|
@@ -580,8 +584,10 @@ public interface IConnectionEncryption
 | GeoJsonWriter | GeoJSON 文件或 HTTP 响应 | Web 端最友好的输出格式 |
 | CsvWriter | CSV 报表 | 属性数据导出，不含几何信息 |
 | GeoPackageWriter | GeoPackage | 标准化单文件多图层交换格式 |
+| OracleWriter | Oracle 数据库表 | 通过 Oracle Spatial 写入 | Phase 2 |
 | ObsS3Writer | 对象存储（OBS / S3） | 生产环境大文件存储，分布式高可用，自动容灾 |
 | ConsoleWriter | 调试输出 | 轻量级文本输出，用于开发调试 |
+| HtmlReportWriter / PdfReportWriter | 报告文档 | 生成可读的质检报告 | Phase 2 |
 
 #### 5.4.1 输出配置能力
 
@@ -596,6 +602,16 @@ public sealed class OutputBinding
     public IReadOnlyList<string>? FieldSelection { get; init; } // null = 全量输出
     public bool IsIntermediate { get; init; } = false;           // 标记为中间结果输出
     public OutputFormatOptions? FormatOptions { get; init; }
+}
+
+public static class OutputAdapterTypes
+{
+    public const string PostGISWriter = "PostGISWriter";
+    public const string ShapefileWriter = "ShapefileWriter";
+    public const string GeoJsonWriter = "GeoJsonWriter";
+    public const string CsvWriter = "CsvWriter";
+    public const string GeoPackageWriter = "GeoPackageWriter";
+    public const string ConsoleWriter = "ConsoleWriter";
 }
 ```
 
@@ -650,6 +666,7 @@ public sealed class AnalysisItem
 {
     public string Id { get; init; }
     public string OperatorId { get; init; }
+    public string? OperatorVersion { get; init; }  // 锁定算子版本，空则使用已注册的最高版本
     public IReadOnlyDictionary<string, InputBinding> Inputs { get; init; }
     public IReadOnlyDictionary<string, object?> Parameters { get; init; }
     public OutputBinding Output { get; init; }
@@ -661,9 +678,8 @@ public sealed class AnalysisPlan
     public string Id { get; init; }
     public string Name { get; init; }
     public string Version { get; init; }
-    public PlanConfig Config { get; init; }
     public IReadOnlyList<AnalysisItem> Items { get; init; }
-    public IReadOnlyList<AnalysisPlan> SubPlans { get; init; }
+    public IReadOnlyList<AnalysisPlan> SubPlans { get; init; } // Phase 3: 当前版本此字段保留但调度引擎不处理子方案嵌套
     public PlanExecutionPolicy ExecutionPolicy { get; init; }
 }
 ```
@@ -678,7 +694,7 @@ public interface IFeature
     IReadOnlyDictionary<string, object?> Attributes { get; }
 }
 
-public interface IFeatureSource
+public interface IFeatureSource : IAsyncDisposable
 {
     FeatureSourceMetadata Metadata { get; }
     Envelope BoundingBox { get; }
@@ -705,7 +721,7 @@ public interface IFeatureSink
 public sealed record ExecutionResult
 {
     public ExecutionStatus Status { get; init; }
-    public IReadOnlyDictionary<string, IFeatureSource> Outputs { get; init; }
+    public IReadOnlyDictionary<string, object?> Outputs { get; init; }  // 可为 IFeatureSource、标量值、布尔值等
     public IReadOnlyList<ExecutionLogEntry> Logs { get; init; }
     public TimeSpan Elapsed { get; init; }
     public string? ErrorCode { get; init; }
@@ -716,6 +732,7 @@ public sealed record ValidationResult
 {
     public bool IsValid { get; init; }
     public IReadOnlyList<ValidationError> Errors { get; init; }
+    public IReadOnlyList<ValidationError> Warnings { get; init; }
 }
 ```
 
@@ -766,6 +783,7 @@ public enum ExecutionStatus { Pending, Queued, Executing, Success, Failed, Cance
 // Validation error
 public sealed record ValidationError
 {
+    public ValidationSeverity Severity { get; init; }
     public string Code { get; init; }
     public string Message { get; init; }
     /// <summary>
@@ -774,6 +792,8 @@ public sealed record ValidationError
     /// </summary>
     public string? Location { get; init; }
 }
+
+public enum ValidationSeverity { Error, Warning }
 
 // Feature source metadata
 public sealed record FeatureSourceMetadata
@@ -790,6 +810,7 @@ public interface ISpatialReference
     string Authority { get; }     // e.g., "EPSG"
     int Code { get; }             // e.g., 4326
     string Wkt { get; }           // full WKT representation
+    bool IsEquivalentTo(ISpatialReference other);
 }
 ```
 
@@ -799,6 +820,8 @@ public interface ISpatialReference
 public sealed class IssueRecord
 {
     public string IssueId { get; init; }        // 问题唯一 ID
+    public string PlanId { get; init; }          // 所属方案 ID
+    public string ExecutionId { get; init; }     // 所属执行 ID
     public string ItemId { get; init; }          // 所属分析项 ID
     public string FeatureId { get; init; }       // 违规要素 ID
     public string IssueType { get; init; }       // 问题类型，如 "TopologyOverlap"
@@ -838,11 +861,11 @@ public sealed record ExecutionMetadata
     public string PlanVersion { get; init; }
     public string OperatorVersion { get; init; }
     /// <summary>
-    /// 数据源版本：指数据源自身的版本标识（非数据库软件版本）。
+    /// 数据源版本字典（DataSourceId → Version）：记录各数据源自身的版本标识（非数据库软件版本）。
     /// 例如质检场景中数据按批次提交——V1、V2——用于区分同一方案对不同版本数据的执行结果。
-    /// 分析场景中通常仅有一个版本，该字段可选。
+    /// 与 VersionTraceRecord.DataSourceVersions 保持一致结构。
     /// </summary>
-    public string DataSourceVersion { get; init; }
+    public IReadOnlyDictionary<string, string> DataSourceVersions { get; init; }
     public DateTimeOffset ExecutionTime { get; init; }
 }
 ```
@@ -940,6 +963,7 @@ public sealed class PlanExecutionPolicy
     public FailurePolicy FailurePolicy { get; init; } = FailurePolicy.StopOnAny;
     public bool EnablePartitioning { get; init; } = false;
     public int PartitionCount { get; init; } = 8;
+    public QualityReportConfig? QualityReportConfig { get; init; }
 }
 
 public enum LogGranularity
@@ -966,7 +990,7 @@ public sealed class GlobalConcurrencyPolicy
 
 ## 7. 执行模型设计
 
-> **实现建议：** 调度层优先使用成熟的调度框架（如 TPL Dataflow、Microsoft Orleans、Quartz.NET 等），而非从零实现。自建调度器在分布式场景下需要处理任务分发、故障恢复、状态持久化等一系列复杂问题，投入产出比较低。第一阶段可采用 `System.Threading.Channels` + `SemaphoreSlim` 实现简单的单机并发调度，后续按需引入成熟的调度框架。
+> **实现建议：** 调度层优先使用成熟的调度框架（如 TPL Dataflow、Quartz.NET 等），而非从零实现。自建调度器在分布式场景下需要处理任务分发、故障恢复、状态持久化等一系列复杂问题，投入产出比较低。第一阶段可采用 `System.Threading.Channels` + `SemaphoreSlim` 实现简单的单机并发调度，后续按需引入成熟的调度框架。
 
 ### 7.1 DAG 构建
 
@@ -982,7 +1006,7 @@ public sealed class GlobalConcurrencyPolicy
 
 - 同一拓扑层中的分析项可并行执行
 - 不同层按依赖顺序执行
-- 并行度由 `PlanConfig.MaxParallelism` 控制
+- 并行度由 `PlanExecutionPolicy.MaxParallelism` 控制
 - 调度器负责资源分配、状态更新和失败传播
 
 > **首版简化策略：** 第一阶段（Phase 1）优先实现简单的串联执行——分析项按 DAG 拓扑顺序依次执行，不启用并行和分布式调度。组通串联链路是最基本的目标，复杂的串并联编排、跨节点分区调度和动态并发调整留给后续迭代。`PlanExecutionPolicy` 中的 `MaxParallelism`、`EnablePartitioning` 等字段虽在设计模型中保留，但首版不强制实现。
@@ -997,7 +1021,6 @@ public sealed class ExecutionContext
     public IResultCache ResultCache { get; init; }
     public ILogger Logger { get; init; }
     public IServiceProvider Services { get; init; }
-    public CancellationToken CancellationToken { get; init; }
     public PlanExecutionStatistics Statistics { get; init; }
 }
 ```
@@ -1206,6 +1229,7 @@ public sealed record ExecutionLogEntry
     public string? FeatureId { get; init; }
 }
 
+// Phase 3+: 要素级数据血缘追踪。当前阶段（Phase 1-2）使用 VersionTraceRecord（§9.6）以版本追溯代替完整血缘。
 public sealed record LineageRecord
 {
     public string ExecutionId { get; init; }
@@ -1248,17 +1272,18 @@ public sealed record LineageRecord
 
 ### 9.5 质量评分算法
 
-基于加权扣分法计算综合质量评分（0-100 分）：
+基于加权通过率模型计算综合质量评分（0-100 分）：
 
 ```
-Score = max(0, 100 - Σ(Weight_i × ViolationCount_i / (TotalChecked_i + ε)))
+Score = Σ(Weight_i × PassRate_i) × 100
+其中 PassRate_i = Passed_i / max(TotalChecked_i, 1)
 ```
 
 其中：
-- `Weight_i`：第 i 条规则的权重，可配置，默认所有规则等权（Weight = 100 / RuleCount）
-- `ViolationCount_i`：该规则发现的问题数
+- `Weight_i`：第 i 条规则的权重，可配置，默认所有规则等权（Weight = 1 / RuleCount）
+- `Passed_i`：该规则通过的要素数
 - `TotalChecked_i`：该规则检查的要素总数
-- `ε`：极小正值，避免除零
+- 使用 `max(TotalChecked_i, 1)` 避免除零
 
 规则权重可通过 `QualityReportConfig` 配置调整，以体现不同规则的重要性差异：
 
@@ -1318,3 +1343,139 @@ public interface IVersionDiffService
 - `QcMode = false`：沿用默认执行策略
 
 核心执行引擎不区分分析/质检——仅根据 Policy 配置调整运行行为，保证框架统一性。
+
+## 10. 安全设计
+
+### 10.1 认证与授权
+
+框架 API 层（Phase 3）的安全模型采用分层认证：
+
+```csharp
+public interface IAuthService
+{
+    Task<AuthResult> AuthenticateAsync(AuthRequest request);
+    Task<bool> AuthorizeAsync(string userId, string resource, string action);
+}
+
+public sealed record AuthRequest
+{
+    public AuthMethod Method { get; init; }  // ApiKey, Jwt, OAuth2
+    public string Credential { get; init; }
+}
+
+public enum AuthMethod { ApiKey, Jwt, OAuth2 }
+
+public sealed record AuthResult
+{
+    public bool Success { get; init; }
+    public string? UserId { get; init; }
+    public string[]? Roles { get; init; }
+    public string? ErrorMessage { get; init; }
+}
+```
+
+API Key 认证为 Phase 2 最小实现；JWT 和 OAuth2 为 Phase 3 扩展。
+
+### 10.2 敏感信息保护
+
+```csharp
+public interface ISecretManager
+{
+    Task<string> EncryptAsync(string plainText);
+    Task<string> DecryptAsync(string cipherText);
+    string MaskForDisplay(string sensitive);  // 脱敏展示，如 "abc****xyz"
+}
+```
+
+数据源连接字符串、API 密钥等敏感信息在方案 JSON 中存储为密文，框架在执行时通过 `ISecretManager` 解密。日志输出和 UI 展示时自动调用 `MaskForDisplay` 脱敏。
+
+### 10.3 审计日志
+
+审计日志独立于执行日志（`ExecutionLogEntry`），记录对框架的管理操作：
+
+```csharp
+public interface IAuditService
+{
+    Task LogAsync(AuditEntry entry);
+}
+
+public sealed record AuditEntry
+{
+    public string AuditId { get; init; }
+    public string UserId { get; init; }
+    public string Action { get; init; }        // PlanCreated, PlanExecuted, OperatorImported
+    public string ResourceType { get; init; }  // Plan, Operator, DataSource
+    public string ResourceId { get; init; }
+    public DateTimeOffset Timestamp { get; init; }
+    public bool Success { get; init; }
+    public string? Detail { get; init; }
+}
+```
+
+审计日志需满足不可篡改要求——建议写入追加日志文件或外部审计系统。
+
+### 10.4 错误码扩展
+
+在现有错误码体系（§6.8）中补充安全相关错误码：
+
+| 错误码 | 含义 |
+|--------|------|
+| `ERR_SEC_AUTH_FAILED` | 认证失败 |
+| `ERR_SEC_PERMISSION_DENIED` | 权限不足 |
+| `ERR_SEC_RATE_LIMITED` | 请求频率超限 |
+| `ERR_SEC_INVALID_TOKEN` | Token 无效或已过期 |
+
+## 11. API 接口设计（Phase 2+）
+
+API 层提供 RESTful HTTP 接口，供外部系统集成和前端应用调用。Phase 1 以 CLI 为主；Phase 2 起逐步实现以下端点。
+
+### 11.1 方案管理 API
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | `/api/plans` | 创建方案（上传 JSON 配置） |
+| GET | `/api/plans/{id}` | 获取方案详情 |
+| PUT | `/api/plans/{id}` | 更新方案 |
+| DELETE | `/api/plans/{id}` | 删除方案 |
+| GET | `/api/plans` | 方案列表（支持分页、搜索） |
+| POST | `/api/plans/{id}/validate` | 校验方案配置 |
+| POST | `/api/plans/{id}/execute` | 触发方案执行，返回执行 ID |
+
+### 11.2 执行管理 API
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/executions/{id}` | 查询执行状态与进度 |
+| GET | `/api/executions/{id}/result` | 获取执行结果 |
+| DELETE | `/api/executions/{id}` | 取消执行 |
+| GET | `/api/executions` | 执行历史列表 |
+
+### 11.3 算子管理 API
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/operators` | 已注册算子列表 |
+| GET | `/api/operators/{id}` | 算子详情（含参数定义） |
+| POST | `/api/operators/import` | 导入算子 DLL |
+
+### 11.4 版本与兼容策略
+
+- API 版本通过 URL 路径标识（如 `/api/v1/plans`）
+- 主版本号变更可能引入不兼容变更；次版本保证向后兼容
+- 响应格式统一为 JSON，错误响应遵循 RFC 7807 Problem Details
+
+### 11.5 CLI 命令
+
+```bash
+# 执行方案
+daf run --plan ./plans/my-analysis.json
+
+# 校验方案
+daf validate --plan ./plans/my-analysis.json
+
+# 列出算子
+daf operator list
+
+# 导入算子
+daf operator import --dll ./plugins/MyOperator.dll
+```
