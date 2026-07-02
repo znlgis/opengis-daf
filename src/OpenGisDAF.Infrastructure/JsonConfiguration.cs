@@ -5,16 +5,22 @@ namespace OpenGisDAF.Infrastructure;
 
 public static class JsonConfiguration
 {
-    public static readonly JsonSerializerOptions DefaultOptions = new()
+    public static readonly JsonSerializerOptions DefaultOptions;
+
+    static JsonConfiguration()
     {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        PropertyNameCaseInsensitive = true,
-        WriteIndented = true,
-        Converters =
+        DefaultOptions = new JsonSerializerOptions
         {
-            new JsonStringEnumConverter(JsonNamingPolicy.CamelCase)
-        }
-    };
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            PropertyNameCaseInsensitive = true,
+            WriteIndented = true,
+            Converters =
+            {
+                new JsonStringEnumConverter(JsonNamingPolicy.CamelCase)
+            }
+        };
+        DefaultOptions.MakeReadOnly();
+    }
 
     /// <summary>
     /// Creates a customized copy of DefaultOptions. The returned instance

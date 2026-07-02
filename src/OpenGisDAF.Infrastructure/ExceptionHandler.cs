@@ -4,8 +4,17 @@ namespace OpenGisDAF.Infrastructure;
 
 public static class ExceptionHandler
 {
+    private static bool _isConfigured;
+    private static readonly object _lock = new();
+
     public static void ConfigureGlobalHandler(ILogger? logger = null)
     {
+        lock (_lock)
+        {
+            if (_isConfigured) return;
+            _isConfigured = true;
+        }
+
         AppDomain.CurrentDomain.UnhandledException += (sender, args) =>
         {
             var ex = args.ExceptionObject as Exception;
