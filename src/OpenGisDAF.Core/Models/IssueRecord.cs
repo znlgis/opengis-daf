@@ -2,7 +2,7 @@ namespace OpenGisDAF.Core;
 
 public sealed class IssueRecord
 {
-    public string IssueId { get; init; } = null!;
+    public string IssueId { get; init; } = Guid.NewGuid().ToString();
     public string PlanId { get; init; } = null!;
     public string ExecutionId { get; init; } = null!;
     public string ItemId { get; init; } = null!;

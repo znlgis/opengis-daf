@@ -32,6 +32,7 @@ public static class JsonConfiguration
     {
         var options = new JsonSerializerOptions(DefaultOptions);
         configure?.Invoke(options);
+        options.MakeReadOnly();
         return options;
     }
 }
