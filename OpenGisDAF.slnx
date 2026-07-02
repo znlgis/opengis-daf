@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/OpenGisDAF.Adapters/OpenGisDAF.Adapters.csproj" />
+    <Project Path="src/OpenGisDAF.Cli/OpenGisDAF.Cli.csproj" />
+    <Project Path="src/OpenGisDAF.Core/OpenGisDAF.Core.csproj" />
+    <Project Path="src/OpenGisDAF.Execution/OpenGisDAF.Execution.csproj" />
+    <Project Path="src/OpenGisDAF.Infrastructure/OpenGisDAF.Infrastructure.csproj" />
+    <Project Path="src/OpenGisDAF.Operators/OpenGisDAF.Operators.csproj" />
+    <Project Path="src/OpenGisDAF.PlanManagement/OpenGisDAF.PlanManagement.csproj" />
+    <Project Path="src/OpenGisDAF.Scheduling/OpenGisDAF.Scheduling.csproj" />
+  </Folder>
+</Solution>
