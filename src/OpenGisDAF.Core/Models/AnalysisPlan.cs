@@ -7,5 +7,5 @@ public sealed class AnalysisPlan
     public string Version { get; init; } = null!;
     public IReadOnlyList<AnalysisItem> Items { get; init; } = [];
     public IReadOnlyList<AnalysisPlan> SubPlans { get; init; } = [];
-    public PlanExecutionPolicy ExecutionPolicy { get; init; } = null!;
+    public PlanExecutionPolicy ExecutionPolicy { get; init; } = new();
 }
