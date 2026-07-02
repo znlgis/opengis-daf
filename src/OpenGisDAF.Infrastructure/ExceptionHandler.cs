@@ -6,11 +6,13 @@ public static class ExceptionHandler
 {
     private static bool _isConfigured;
     private static readonly object _lock = new();
+    private static ILogger? _logger;
 
     public static void ConfigureGlobalHandler(ILogger? logger = null)
     {
         lock (_lock)
         {
+            _logger = logger;
             if (_isConfigured) return;
             _isConfigured = true;
         }
@@ -19,9 +21,10 @@ public static class ExceptionHandler
         {
             var ex = args.ExceptionObject as Exception;
             var message = ex?.Message ?? args.ExceptionObject?.ToString() ?? "Unknown unhandled exception";
-            if (logger != null)
+            var currentLogger = _logger;
+            if (currentLogger != null)
             {
-                logger.LogCritical(ex, "Unhandled exception: {Message}", message);
+                currentLogger.LogCritical(ex, "Unhandled exception: {Message}", message);
             }
             else
             {
@@ -34,9 +37,10 @@ public static class ExceptionHandler
         {
             var innerEx = args.Exception.Flatten().InnerException;
             var message = innerEx?.Message ?? args.Exception.Message;
-            if (logger != null)
+            var currentLogger = _logger;
+            if (currentLogger != null)
             {
-                logger.LogError(args.Exception, "Unobserved task exception: {Message}", message);
+                currentLogger.LogError(args.Exception, "Unobserved task exception: {Message}", message);
             }
             else
             {
