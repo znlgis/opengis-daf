@@ -1,6 +1,6 @@
 namespace OpenGisDAF.Core;
 
-public interface IFeatureSink
+public interface IFeatureSink : IAsyncDisposable
 {
     Task InitializeAsync(OutputSchema schema, CancellationToken cancellationToken);
     Task WriteAsync(IFeature feature, CancellationToken cancellationToken);

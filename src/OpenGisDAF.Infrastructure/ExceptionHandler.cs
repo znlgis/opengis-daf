@@ -9,13 +9,13 @@ public static class ExceptionHandler
         AppDomain.CurrentDomain.UnhandledException += (sender, args) =>
         {
             var ex = args.ExceptionObject as Exception;
-            logger?.LogCritical(ex, "未处理的异常: {Message}", ex?.Message);
+            logger?.LogCritical(ex, "Unhandled exception: {Message}", ex?.Message);
             Environment.Exit(1);
         };
 
         TaskScheduler.UnobservedTaskException += (sender, args) =>
         {
-            logger?.LogError(args.Exception, "未观察到的任务异常: {Message}", args.Exception.Message);
+            logger?.LogError(args.Exception, "Unobserved task exception: {Message}", args.Exception.Message);
             args.SetObserved();
         };
     }

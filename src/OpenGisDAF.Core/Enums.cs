@@ -12,4 +12,6 @@ public enum ValidationSeverity { Error, Warning }
 
 public enum IssueSeverity { Error, Warning, Info }
 
-public enum LogGranularity { Item }
+public enum LogGranularity { Plan, Item, Feature }
+
+public enum FailurePolicy { StopOnAny, ContinueIndependent }
