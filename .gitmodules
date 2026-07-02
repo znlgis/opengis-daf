@@ -1,0 +1,3 @@
+[submodule "extern/opengis-utils-for-net"]
+	path = extern/opengis-utils-for-net
+	url = https://github.com/znlgis/opengis-utils-for-net.git
