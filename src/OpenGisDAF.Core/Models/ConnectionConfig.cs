@@ -9,5 +9,5 @@ public sealed class ConnectionConfig
     public string Database { get; init; } = null!;
     public string UserName { get; init; } = null!;
     public string? EncryptedPassword { get; init; }
-    public IReadOnlyDictionary<string, string> AdditionalOptions { get; init; } = null!;
+    public IReadOnlyDictionary<string, string> AdditionalOptions { get; init; } = new Dictionary<string, string>();
 }

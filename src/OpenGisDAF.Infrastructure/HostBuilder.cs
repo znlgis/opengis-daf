@@ -28,6 +28,10 @@ public class HostBuilder
             _loggingConfig?.Invoke(builder);
         });
 
-        return _services.BuildServiceProvider();
+        return _services.BuildServiceProvider(new ServiceProviderOptions
+        {
+            ValidateScopes = true,
+            ValidateOnBuild = true
+        });
     }
 }

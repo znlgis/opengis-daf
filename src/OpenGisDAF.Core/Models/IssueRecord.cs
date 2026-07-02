@@ -10,6 +10,6 @@ public sealed class IssueRecord
     public string IssueType { get; init; } = null!;
     public IssueSeverity Severity { get; init; }
     public string Description { get; init; } = null!;
-    public IReadOnlyDictionary<string, object?> ContextData { get; init; } = null!;
+    public IReadOnlyDictionary<string, object?> ContextData { get; init; } = new Dictionary<string, object?>();
     public NetTopologySuite.Geometries.Geometry? ViolationGeometry { get; init; }
 }

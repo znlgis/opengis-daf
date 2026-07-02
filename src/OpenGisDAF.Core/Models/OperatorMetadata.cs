@@ -11,7 +11,7 @@ public sealed record OperatorMetadata
     public string? MinFrameworkVersion { get; init; }
     public string? CompatibilityNotes { get; init; }
     public bool SupportsIncremental { get; init; } = false;
-    public IReadOnlyList<ParameterDefinition> Parameters { get; init; } = null!;
+    public IReadOnlyList<ParameterDefinition> Parameters { get; init; } = [];
     public InputSchema InputSchema { get; init; } = null!;
     public OutputSchema OutputSchema { get; init; } = null!;
 }
