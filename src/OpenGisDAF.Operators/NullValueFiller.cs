@@ -204,6 +204,7 @@ public sealed class NullValueFiller : IOperator
             return new ExecutionResult
             {
                 Status = ExecutionStatus.Canceled,
+                ErrorCode = ErrorCode.RtCancelled,
                 Elapsed = sw.Elapsed,
                 Logs = logs
             };

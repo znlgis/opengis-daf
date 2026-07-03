@@ -1,11 +1,16 @@
 namespace OpenGisDAF.PlanManagement;
 
+using System.Collections.Concurrent;
 using System.Text;
+using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
 using OpenGisDAF.Core;
 
 public sealed class PlanVersionManager : IPlanVersionManager
 {
+    private static readonly ConcurrentDictionary<string, object> _backupLocks = new();
+    private static readonly Regex _versionPattern = new(@"\.V(\d+)\.bak$", RegexOptions.Compiled);
+
     private readonly IPlanRepository _repository;
     private readonly IPlanSerializer _serializer;
     private readonly ILogger<PlanVersionManager>? _logger;
@@ -24,8 +29,7 @@ public sealed class PlanVersionManager : IPlanVersionManager
     {
         ArgumentNullException.ThrowIfNull(planId);
 
-        var repo = GetPlanRepository();
-        var filePath = repo.FindPlanFile(planId);
+        var filePath = _repository.FindPlanFile(planId);
         if (filePath is null)
         {
             _logger?.LogWarning("Plan file not found for backup, plan ID: {PlanId}", planId);
@@ -33,28 +37,32 @@ public sealed class PlanVersionManager : IPlanVersionManager
         }
 
         var dir = Path.GetDirectoryName(filePath)!;
-        var bakFiles = Directory.EnumerateFiles(dir, $"{planId}.V*.bak").ToList();
 
-        int nextVersion = 1;
-        if (bakFiles.Count > 0)
+        var lockObj = _backupLocks.GetOrAdd(planId, _ => new object());
+        lock (lockObj)
         {
-            var maxVersion = 0;
-            foreach (var bak in bakFiles)
+            var bakFiles = Directory.EnumerateFiles(dir, $"{planId}.V*.bak").ToList();
+
+            int nextVersion = 1;
+            if (bakFiles.Count > 0)
             {
-                var bakName = Path.GetFileNameWithoutExtension(bak);
-                var vPart = bakName.Substring(planId.Length + 2);
-                if (int.TryParse(vPart, out var v))
-                    maxVersion = Math.Max(maxVersion, v);
+                var maxVersion = 0;
+                foreach (var bak in bakFiles)
+                {
+                    var match = _versionPattern.Match(bak);
+                    if (match.Success && int.TryParse(match.Groups[1].Value, out var v))
+                        maxVersion = Math.Max(maxVersion, v);
+                }
+
+                nextVersion = maxVersion + 1;
             }
 
-            nextVersion = maxVersion + 1;
+            var bakPath = Path.Combine(dir, $"{planId}.V{nextVersion}.bak");
+            File.Copy(filePath, bakPath, overwrite: true);
+            _logger?.LogInformation(
+                "Backup created for plan {PlanId}: {BackupPath} (version {Version})",
+                planId, bakPath, nextVersion);
         }
-
-        var bakPath = Path.Combine(dir, $"{planId}.V{nextVersion}.bak");
-        File.Copy(filePath, bakPath, overwrite: true);
-        _logger?.LogInformation(
-            "Backup created for plan {PlanId}: {BackupPath} (version {Version})",
-            planId, bakPath, nextVersion);
     }
 
     public Task<IReadOnlyList<VersionHistoryEntry>> GetVersionHistoryAsync(
@@ -63,8 +71,7 @@ public sealed class PlanVersionManager : IPlanVersionManager
     {
         ArgumentNullException.ThrowIfNull(planId);
 
-        var repo = GetPlanRepository();
-        var filePath = repo.FindPlanFile(planId);
+        var filePath = _repository.FindPlanFile(planId);
         if (filePath is null)
         {
             _logger?.LogWarning("Plan file not found for version history, plan ID: {PlanId}", planId);
@@ -77,9 +84,8 @@ public sealed class PlanVersionManager : IPlanVersionManager
         var entries = new List<VersionHistoryEntry>();
         foreach (var bak in bakFiles)
         {
-            var bakName = Path.GetFileNameWithoutExtension(bak);
-            var vPart = bakName.Substring(planId.Length + 2);
-            if (!int.TryParse(vPart, out var v))
+            var match = _versionPattern.Match(bak);
+            if (!match.Success || !int.TryParse(match.Groups[1].Value, out var v))
                 continue;
 
             var fileInfo = new FileInfo(bak);
@@ -88,7 +94,7 @@ public sealed class PlanVersionManager : IPlanVersionManager
                 PlanId = planId,
                 VersionNumber = v,
                 FilePath = bak,
-                CreatedAt = fileInfo.CreationTime,
+                CreatedAt = fileInfo.LastWriteTime,
                 FileSize = fileInfo.Length,
             });
         }
@@ -104,7 +110,6 @@ public sealed class PlanVersionManager : IPlanVersionManager
     {
         ArgumentNullException.ThrowIfNull(planId);
 
-        var repo = GetPlanRepository();
         var history = await GetVersionHistoryAsync(planId, cancellationToken);
         var entry = history.FirstOrDefault(e => e.VersionNumber == versionNumber);
 
@@ -119,7 +124,7 @@ public sealed class PlanVersionManager : IPlanVersionManager
 
         await BackupAsync(planId, cancellationToken);
 
-        var currentFilePath = repo.FindPlanFile(planId);
+        var currentFilePath = _repository.FindPlanFile(planId);
         if (currentFilePath is not null)
         {
             var newJson = _serializer.Serialize(plan);
@@ -184,8 +189,7 @@ public sealed class PlanVersionManager : IPlanVersionManager
 
         if (version == 0)
         {
-            var repo = GetPlanRepository();
-            var filePath = repo.FindPlanFile(planId);
+            var filePath = _repository.FindPlanFile(planId);
             if (filePath is null)
                 throw new FileNotFoundException($"Plan file not found for plan ID: {planId}");
 
@@ -193,8 +197,7 @@ public sealed class PlanVersionManager : IPlanVersionManager
         }
         else
         {
-            var repo = GetPlanRepository();
-            var filePath = repo.FindPlanFile(planId);
+            var filePath = _repository.FindPlanFile(planId);
             if (filePath is null)
                 throw new FileNotFoundException($"Plan file not found for plan ID: {planId}");
 
@@ -207,14 +210,5 @@ public sealed class PlanVersionManager : IPlanVersionManager
         }
 
         return content.Replace("\r\n", "\n").Split('\n');
-    }
-
-    private PlanRepository GetPlanRepository()
-    {
-        if (_repository is PlanRepository repo)
-            return repo;
-
-        throw new InvalidOperationException(
-            "PlanVersionManager requires an IPlanRepository backed by PlanRepository.");
     }
 }

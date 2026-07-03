@@ -10,6 +10,7 @@ public sealed class PluginManager : IPluginManager
     private readonly IOperatorPool _pool;
     private readonly ILogger<PluginManager> _logger;
     private readonly List<PluginLoadContext> _contexts = [];
+    private readonly object _contextsLock = new();
 
     public PluginManager(IOperatorPool pool, ILogger<PluginManager> logger)
     {
@@ -45,7 +46,10 @@ public sealed class PluginManager : IPluginManager
             }
         }
 
-        _contexts.Add(context);
+        lock (_contextsLock)
+        {
+            _contexts.Add(context);
+        }
 
         if (operators.Count == 0)
             _logger.LogWarning("No IOperator implementations found in: {Path}", fullPath);
@@ -55,28 +59,41 @@ public sealed class PluginManager : IPluginManager
 
     public void UnloadPlugin(string pluginId)
     {
-        var ctx = _contexts.FirstOrDefault(c =>
-            string.Equals(Path.GetFileNameWithoutExtension(c.DllPath), pluginId, StringComparison.OrdinalIgnoreCase));
+        PluginLoadContext? ctx;
+        lock (_contextsLock)
+        {
+            ctx = _contexts.FirstOrDefault(c =>
+                string.Equals(Path.GetFileNameWithoutExtension(c.DllPath), pluginId, StringComparison.OrdinalIgnoreCase));
+
+            if (ctx is not null)
+            {
+                _contexts.Remove(ctx);
+            }
+        }
 
         if (ctx is not null)
         {
-            _contexts.Remove(ctx);
             ctx.Unload();
             _logger.LogInformation("Unloaded plugin: {PluginId}", pluginId);
         }
     }
 
     public IReadOnlyList<PluginInfo> GetLoadedPlugins()
-        => _contexts.Select(c => new PluginInfo
+    {
+        lock (_contextsLock)
         {
-            PluginId = Path.GetFileNameWithoutExtension(c.DllPath),
-            DllPath = c.DllPath,
-            Version = c.Assembly.GetName().Version?.ToString() ?? "0.0.0",
-            OperatorIds = _pool.GetAll()
-                .Where(op => op.GetType().Assembly == c.Assembly)
-                .Select(op => op.Metadata.Id)
-                .ToList()
-        }).ToList();
+            return _contexts.Select(c => new PluginInfo
+            {
+                PluginId = Path.GetFileNameWithoutExtension(c.DllPath),
+                DllPath = c.DllPath,
+                Version = c.Assembly.GetName().Version?.ToString() ?? "0.0.0",
+                OperatorIds = _pool.GetAll()
+                    .Where(op => op.GetType().Assembly == c.Assembly)
+                    .Select(op => op.Metadata.Id)
+                    .ToList()
+            }).ToList();
+        }
+    }
 
     private sealed class PluginLoadContext : AssemblyLoadContext
     {

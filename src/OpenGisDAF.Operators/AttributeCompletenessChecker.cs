@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using OpenGisDAF.Adapters;
 using OpenGisDAF.Core;
@@ -9,8 +10,8 @@ public sealed class AttributeCompletenessChecker : IOperator
 {
     private const string InputName = "source";
     private const string ParamRequiredFields = "required_fields";
-    private const string ParamQcMode = "qc_mode";
-    private const string OutputKeyPassed = "result";
+    private const string ParamQcMode = "_qc_mode";
+    private const string OutputKeyPassed = "output";
     private const string OutputKeyIssues = "issues";
 
     public OperatorMetadata Metadata { get; } = new()
@@ -87,7 +88,7 @@ public sealed class AttributeCompletenessChecker : IOperator
         ArgumentNullException.ThrowIfNull(parameters);
         ArgumentNullException.ThrowIfNull(context);
 
-        var startTime = DateTimeOffset.UtcNow;
+        var sw = Stopwatch.StartNew();
         var logger = context.Logger;
 
         if (!inputs.TryGetValue(InputName, out var source))
@@ -175,7 +176,7 @@ public sealed class AttributeCompletenessChecker : IOperator
             {
                 Status = ExecutionStatus.Canceled,
                 ErrorCode = ErrorCode.RtCancelled,
-                Elapsed = DateTimeOffset.UtcNow - startTime
+                Elapsed = sw.Elapsed
             };
         }
         catch (Exception ex)
@@ -186,7 +187,7 @@ public sealed class AttributeCompletenessChecker : IOperator
                 Status = ExecutionStatus.Failed,
                 ErrorCode = ErrorCode.RtUnexpected,
                 ErrorMessage = ex.Message,
-                Elapsed = DateTimeOffset.UtcNow - startTime
+                Elapsed = sw.Elapsed
             };
         }
 
@@ -194,7 +195,7 @@ public sealed class AttributeCompletenessChecker : IOperator
             "{OperatorId} 检查完成: 共 {Total} 个要素，通过 {Passed}，未通过 {Failed}，警告 {Warning}",
             Metadata.Id, featureCount, passedCount, failedCount, warningCount);
 
-        var elapsed = DateTimeOffset.UtcNow - startTime;
+        var elapsed = sw.Elapsed;
 
         if (qcMode)
         {

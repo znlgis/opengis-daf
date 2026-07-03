@@ -5,12 +5,10 @@ namespace OpenGisDAF.Adapters;
 
 public sealed class ConsoleFeatureSink : IFeatureSink
 {
-    private OutputSchema? _schema;
     private int _writtenCount;
 
     public Task InitializeAsync(OutputSchema schema, CancellationToken cancellationToken = default)
     {
-        _schema = schema;
         _writtenCount = 0;
         Console.WriteLine("=== Console Output ===");
         Console.WriteLine($"Schema: {schema.Description ?? "Unnamed"}");

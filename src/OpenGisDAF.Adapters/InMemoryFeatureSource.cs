@@ -8,6 +8,7 @@ public sealed class InMemoryFeatureSource : IFeatureSource
 {
     private readonly List<IFeature> _features;
     private readonly FeatureSourceMetadata _metadata;
+    private Envelope? _cachedBoundingBox;
 
     public InMemoryFeatureSource(IEnumerable<IFeature> features, string? sourceId = null)
     {
@@ -22,8 +23,8 @@ public sealed class InMemoryFeatureSource : IFeatureSource
     }
 
     public FeatureSourceMetadata Metadata => _metadata;
-    public Envelope BoundingBox => CalculateBoundingBox();
-    public ISpatialReference SpatialReference => throw new NotSupportedException("InMemory source has no CRS; set via operator configuration.");
+    public Envelope BoundingBox => _cachedBoundingBox ??= CalculateBoundingBox();
+    public ISpatialReference SpatialReference => new Utilities.SpatialReference(0, "Unknown");
 
     public Task<long> GetFeatureCountAsync() => Task.FromResult((long)_features.Count);
 
@@ -47,6 +48,7 @@ public sealed class InMemoryFeatureSource : IFeatureSource
     public ValueTask DisposeAsync()
     {
         _features.Clear();
+        _cachedBoundingBox = null;
         return ValueTask.CompletedTask;
     }
 

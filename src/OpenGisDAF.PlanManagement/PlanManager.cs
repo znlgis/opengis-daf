@@ -129,7 +129,7 @@ public sealed class PlanManager : IPlanManager
         }
 
         var copyName = string.IsNullOrEmpty(source.Name)
-            ? source.Name
+            ? "Copy"
             : source.Name + " (Copy)";
 
         var copy = new AnalysisPlan
@@ -193,8 +193,8 @@ public sealed class PlanManager : IPlanManager
                     new ValidationError
                     {
                         Severity = ValidationSeverity.Error,
-                        Code = "PLAN_NOT_FOUND",
-                        Message = "方案不存在",
+                        Code = ErrorCode.PlanNotFound,
+                        Message = "Plan not found",
                     },
                 },
             };

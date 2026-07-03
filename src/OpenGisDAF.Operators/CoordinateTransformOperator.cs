@@ -57,7 +57,7 @@ public sealed class CoordinateTransformOperator : IOperator
             errors.Add(new ValidationError
             {
                 Severity = ValidationSeverity.Error,
-                Code = "MISSING_INPUT",
+                Code = ErrorCode.CfgBindingIncomplete,
                 Message = "缺少输入 'source'"
             });
         }
@@ -68,7 +68,7 @@ public sealed class CoordinateTransformOperator : IOperator
             errors.Add(new ValidationError
             {
                 Severity = ValidationSeverity.Error,
-                Code = "INVALID_PARAMETER",
+                Code = ErrorCode.CfgParamOutOfRange,
                 Message = "参数 'source_epsg' 必须为正整数"
             });
         }
@@ -79,7 +79,7 @@ public sealed class CoordinateTransformOperator : IOperator
             errors.Add(new ValidationError
             {
                 Severity = ValidationSeverity.Error,
-                Code = "INVALID_PARAMETER",
+                Code = ErrorCode.CfgParamOutOfRange,
                 Message = "参数 'target_epsg' 必须为正整数"
             });
         }
@@ -103,15 +103,15 @@ public sealed class CoordinateTransformOperator : IOperator
         try
         {
             if (!inputs.TryGetValue("source", out var source))
-                return Fail("INPUT_MISSING", "输入 'source' 未提供", sw.Elapsed, logs);
+                return Fail(ErrorCode.CfgBindingIncomplete, "输入 'source' 未提供", sw.Elapsed, logs);
 
             var sourceEpsg = GetIntParam(parameters, "source_epsg");
             if (sourceEpsg is null || sourceEpsg <= 0)
-                return Fail("INVALID_PARAMETER", "参数 'source_epsg' 必须为正整数", sw.Elapsed, logs);
+                return Fail(ErrorCode.CfgParamOutOfRange, "参数 'source_epsg' 必须为正整数", sw.Elapsed, logs);
 
             var targetEpsg = GetIntParam(parameters, "target_epsg");
             if (targetEpsg is null || targetEpsg <= 0)
-                return Fail("INVALID_PARAMETER", "参数 'target_epsg' 必须为正整数", sw.Elapsed, logs);
+                return Fail(ErrorCode.CfgParamOutOfRange, "参数 'target_epsg' 必须为正整数", sw.Elapsed, logs);
 
             var transformedFeatures = new List<IFeature>();
             var featureCount = 0;
@@ -142,7 +142,7 @@ public sealed class CoordinateTransformOperator : IOperator
             return new ExecutionResult
             {
                 Status = ExecutionStatus.Success,
-                Outputs = new Dictionary<string, object?> { ["result"] = output },
+                Outputs = new Dictionary<string, object?> { ["output"] = output },
                 Logs = logs,
                 Elapsed = sw.Elapsed
             };
@@ -152,6 +152,7 @@ public sealed class CoordinateTransformOperator : IOperator
             return new ExecutionResult
             {
                 Status = ExecutionStatus.Canceled,
+                ErrorCode = ErrorCode.RtCancelled,
                 Elapsed = sw.Elapsed,
                 Logs = logs
             };
@@ -159,7 +160,7 @@ public sealed class CoordinateTransformOperator : IOperator
         catch (Exception ex)
         {
             context.Logger.LogError(ex, "坐标系转换失败");
-            return Fail("TRANSFORM_ERROR", $"坐标系转换失败: {ex.Message}", sw.Elapsed, logs);
+            return Fail(ErrorCode.RtUnexpected, $"坐标系转换失败: {ex.Message}", sw.Elapsed, logs);
         }
     }
 

@@ -58,70 +58,71 @@ public sealed partial class PlanValidator : IPlanValidator
         if (plan.Items is null || plan.Items.Count == 0)
         {
             errors.Add(NewError(ErrorCode.CfgSchemaInvalid, "Plan must contain at least one analysis item.", null));
-            return;
         }
-
-        var itemIds = new HashSet<string>();
-
-        for (int i = 0; i < plan.Items.Count; i++)
+        else
         {
-            var item = plan.Items[i];
-            var loc = $"plan/{i}";
+            var itemIds = new HashSet<string>();
 
-            // Rule 5: item.Id not null/empty/whitespace
-            if (string.IsNullOrWhiteSpace(item.Id))
+            for (int i = 0; i < plan.Items.Count; i++)
             {
-                errors.Add(NewError(ErrorCode.CfgSchemaInvalid,
-                    $"Item at index {i} has null, empty, or whitespace ID.", loc));
-            }
-            else
-            {
-                // Rule 7: item.Id unique across plan
-                if (!itemIds.Add(item.Id))
-                    errors.Add(NewError(ErrorCode.CfgSchemaInvalid,
-                        $"Duplicate item ID '{item.Id}' found in plan.", loc));
-            }
+                var item = plan.Items[i];
+                var loc = $"plan/{i}";
 
-            // Rule 6: item.OperatorId not null/empty/whitespace
-            if (string.IsNullOrWhiteSpace(item.OperatorId))
-                errors.Add(NewError(ErrorCode.CfgSchemaInvalid,
-                    $"Item at index {i} has null, empty, or whitespace operator ID.", loc));
-
-            // Rule 8: item.Inputs not null
-            if (item.Inputs is null)
-            {
-                errors.Add(NewError(ErrorCode.CfgSchemaInvalid,
-                    $"Item at index {i} has null Inputs.", loc));
-            }
-            else
-            {
-                // Rule 9: each input binding SourceId not null/empty
-                foreach (var (inputKey, binding) in item.Inputs)
+                // Rule 5: item.Id not null/empty/whitespace
+                if (string.IsNullOrWhiteSpace(item.Id))
                 {
-                    if (string.IsNullOrWhiteSpace(binding.SourceId))
+                    errors.Add(NewError(ErrorCode.CfgSchemaInvalid,
+                        $"Item at index {i} has null, empty, or whitespace ID.", loc));
+                }
+                else
+                {
+                    // Rule 7: item.Id unique across plan
+                    if (!itemIds.Add(item.Id))
                         errors.Add(NewError(ErrorCode.CfgSchemaInvalid,
-                            $"Input '{inputKey}' of item at index {i} has null or empty SourceId.", loc));
+                            $"Duplicate item ID '{item.Id}' found in plan.", loc));
+                }
 
-                    // Rule 10: if BindingType == SubPlan, SourceId must exist in plan.SubPlans
-                    if (binding.Type == BindingType.SubPlan)
+                // Rule 6: item.OperatorId not null/empty/whitespace
+                if (string.IsNullOrWhiteSpace(item.OperatorId))
+                    errors.Add(NewError(ErrorCode.CfgSchemaInvalid,
+                        $"Item at index {i} has null, empty, or whitespace operator ID.", loc));
+
+                // Rule 8: item.Inputs not null
+                if (item.Inputs is null)
+                {
+                    errors.Add(NewError(ErrorCode.CfgSchemaInvalid,
+                        $"Item at index {i} has null Inputs.", loc));
+                }
+                else
+                {
+                    // Rule 9: each input binding SourceId not null/empty
+                    foreach (var (inputKey, binding) in item.Inputs)
                     {
-                        if (plan.SubPlans is null || plan.SubPlans.Count == 0 ||
-                            !plan.SubPlans.Any(sp => sp.Id == binding.SourceId))
+                        if (string.IsNullOrWhiteSpace(binding.SourceId))
                             errors.Add(NewError(ErrorCode.CfgSchemaInvalid,
-                                $"SubPlan reference '{binding.SourceId}' in item at index {i} input '{inputKey}' not found in plan.SubPlans.", loc));
+                                $"Input '{inputKey}' of item at index {i} has null or empty SourceId.", loc));
+
+                        // Rule 10: if BindingType == SubPlan, SourceId must exist in plan.SubPlans
+                        if (binding.Type == BindingType.SubPlan)
+                        {
+                            if (plan.SubPlans is null || plan.SubPlans.Count == 0 ||
+                                !plan.SubPlans.Any(sp => sp.Id == binding.SourceId))
+                                errors.Add(NewError(ErrorCode.CfgSchemaInvalid,
+                                    $"SubPlan reference '{binding.SourceId}' in item at index {i} input '{inputKey}' not found in plan.SubPlans.", loc));
+                        }
                     }
                 }
+
+                // Rule 11: item.ExecutionPolicy.MaxRetries >= 0
+                if (item.ExecutionPolicy.MaxRetries < 0)
+                    errors.Add(NewError(ErrorCode.CfgSchemaInvalid,
+                        $"Item at index {i} MaxRetries must be >= 0, got {item.ExecutionPolicy.MaxRetries}.", loc));
+
+                // Rule 12: item.ExecutionPolicy.Timeout > TimeSpan.Zero
+                if (item.ExecutionPolicy.Timeout <= TimeSpan.Zero)
+                    errors.Add(NewError(ErrorCode.CfgSchemaInvalid,
+                        $"Item at index {i} Timeout must be greater than zero.", loc));
             }
-
-            // Rule 11: item.ExecutionPolicy.MaxRetries >= 0
-            if (item.ExecutionPolicy.MaxRetries < 0)
-                errors.Add(NewError(ErrorCode.CfgSchemaInvalid,
-                    $"Item at index {i} MaxRetries must be >= 0, got {item.ExecutionPolicy.MaxRetries}.", loc));
-
-            // Rule 12: item.ExecutionPolicy.Timeout > TimeSpan.Zero
-            if (item.ExecutionPolicy.Timeout <= TimeSpan.Zero)
-                errors.Add(NewError(ErrorCode.CfgSchemaInvalid,
-                    $"Item at index {i} Timeout must be greater than zero.", loc));
         }
 
         // Rule 13: plan.ExecutionPolicy.MaxParallelism >= 1
@@ -133,6 +134,14 @@ public sealed partial class PlanValidator : IPlanValidator
         if (plan.ExecutionPolicy.EnablePartitioning && plan.ExecutionPolicy.PartitionCount < 1)
             errors.Add(NewError(ErrorCode.CfgSchemaInvalid,
                 $"Plan PartitionCount must be >= 1 when partitioning is enabled, got {plan.ExecutionPolicy.PartitionCount}.", null));
+
+        // Rule 17: DAG cycle detection
+        if (plan.Items is { Count: > 1 })
+        {
+            var validItems = plan.Items.Where(i => !string.IsNullOrWhiteSpace(i.Id)).ToList();
+            var itemMap = validItems.ToDictionary(i => i.Id);
+            ValidateDagNoCycle(validItems, itemMap, errors);
+        }
     }
 
     // ===== Phase B: Business rule validation (rules 15-21, only when operatorPool != null) =====
@@ -194,9 +203,6 @@ public sealed partial class PlanValidator : IPlanValidator
                 }
             }
         }
-
-        // Rule 17: DAG cycle detection (Error)
-        ValidateDagNoCycle(plan.Items, itemMap, errors);
 
         // Rule 19: Output binding completeness for non-final items (Warning)
         ValidateOutputBindings(plan.Items, referencedItems, warnings);

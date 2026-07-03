@@ -192,6 +192,7 @@ public sealed class FieldCalculator : IOperator
             return new ExecutionResult
             {
                 Status = ExecutionStatus.Canceled,
+                ErrorCode = ErrorCode.RtCancelled,
                 Elapsed = sw.Elapsed,
                 Logs = logs
             };
@@ -211,7 +212,7 @@ public sealed class FieldCalculator : IOperator
         return refs;
     }
 
-    private static object? ComputeExpression(
+    private object? ComputeExpression(
         string expression,
         IReadOnlyDictionary<string, object?> attrs,
         HashSet<string> fieldRefs,
@@ -219,7 +220,7 @@ public sealed class FieldCalculator : IOperator
     {
         // String literal: "hello"
         if (expression.Length >= 2 && expression[0] == '"' && expression[^1] == '"')
-            return CoerceTo(expression[1..^1], targetType);
+            return SafeCoerceTo(expression[1..^1], targetType);
 
         var trimmed = expression.Trim();
 
@@ -228,7 +229,7 @@ public sealed class FieldCalculator : IOperator
         {
             var refName = fieldRefs.First();
             var rawValue = attrs.TryGetValue(refName, out var v) ? v : null;
-            return CoerceTo(rawValue, targetType);
+            return SafeCoerceTo(rawValue, targetType);
         }
 
         // Substitute field references
@@ -241,11 +242,23 @@ public sealed class FieldCalculator : IOperator
 
         // Try numeric literal after substitution
         if (double.TryParse(substituted, NumberStyles.Float, CultureInfo.InvariantCulture, out var num))
-            return CoerceTo(num, targetType);
+            return SafeCoerceTo(num, targetType);
 
         // Arithmetic expression
         var evalResult = EvaluateArithmetic(substituted);
-        return CoerceTo(evalResult, targetType);
+        return SafeCoerceTo(evalResult, targetType);
+    }
+
+    private static object? SafeCoerceTo(object? value, FieldType targetType)
+    {
+        try
+        {
+            return CoerceTo(value, targetType);
+        }
+        catch (Exception)
+        {
+            return null;
+        }
     }
 
     private static string FormatValue(object? value)
@@ -398,7 +411,10 @@ public sealed class FieldCalculator : IOperator
             if (_pos == start)
                 throw new FormatException($"位置 {_pos} 处期望数字");
 
-            return double.Parse(_expr[start.._pos], CultureInfo.InvariantCulture);
+            if (!double.TryParse(_expr[start.._pos], NumberStyles.Float, CultureInfo.InvariantCulture, out var num))
+                throw new OverflowException($"位置 {start} 处的数值超出可表示范围");
+
+            return num;
         }
 
         private bool SkipWhitespace()

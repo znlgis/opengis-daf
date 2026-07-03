@@ -5,18 +5,12 @@ using OpenGIS.Utils.Geometry;
 using OpenGisDAF.Adapters;
 using OpenGisDAF.Adapters.Utilities;
 using OpenGisDAF.Core;
+using ExecutionContext = OpenGisDAF.Core.ExecutionContext;
 
 namespace OpenGisDAF.Operators;
 
 public sealed class ClipOperator : IOperator
 {
-    private readonly ILogger<ClipOperator> _logger;
-
-    public ClipOperator(ILogger<ClipOperator> logger)
-    {
-        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-    }
-
     public OperatorMetadata Metadata { get; } = new()
     {
         Id = "clip",
@@ -75,7 +69,7 @@ public sealed class ClipOperator : IOperator
     public async Task<ExecutionResult> ExecuteAsync(
         IReadOnlyDictionary<string, IFeatureSource> inputs,
         IReadOnlyDictionary<string, object?> parameters,
-        OpenGisDAF.Core.ExecutionContext context,
+        ExecutionContext context,
         CancellationToken cancellationToken)
     {
         var sw = Stopwatch.StartNew();
@@ -115,24 +109,33 @@ public sealed class ClipOperator : IOperator
                 {
                     cancellationToken.ThrowIfCancellationRequested();
 
-                    var clipWkt = WktConverter.ToWkt(clipFeature.Geometry);
-                    var intersectedWkt = GeometryUtil.IntersectionWkt(srcWkt, clipWkt);
-
-                    if (string.IsNullOrWhiteSpace(intersectedWkt) || intersectedWkt == "GEOMETRYCOLLECTION EMPTY")
+                    try
                     {
-                        continue;
+                        var clipWkt = WktConverter.ToWkt(clipFeature.Geometry);
+                        var intersectedWkt = GeometryUtil.IntersectionWkt(srcWkt, clipWkt);
+
+                        if (string.IsNullOrWhiteSpace(intersectedWkt))
+                        {
+                            continue;
+                        }
+
+                        var intersectedGeom = WktConverter.FromWkt(intersectedWkt);
+
+                        if (intersectedGeom.IsEmpty)
+                        {
+                            continue;
+                        }
+
+                        seq++;
+                        var resultId = $"{srcFeature.Id}_clip_{clipFeature.Id}_{seq}";
+                        results.Add(new ResultFeature(resultId, intersectedGeom, srcFeature.Attributes));
                     }
-
-                    var intersectedGeom = WktConverter.FromWkt(intersectedWkt);
-
-                    if (intersectedGeom.IsEmpty)
+                    catch (Exception ex)
                     {
-                        continue;
+                        context.Logger.LogWarning(ex,
+                            "[Clip] 裁剪计算异常: source={SrcId}, clip={ClipId}",
+                            srcFeature.Id, clipFeature.Id);
                     }
-
-                    seq++;
-                    var resultId = $"{srcFeature.Id}_clip_{clipFeature.Id}_{seq}";
-                    results.Add(new ResultFeature(resultId, intersectedGeom, srcFeature.Attributes));
                 }
             }
 

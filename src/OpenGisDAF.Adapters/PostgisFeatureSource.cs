@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using NetTopologySuite;
 using NetTopologySuite.Geometries;
 using OpenGIS.Utils.DataSource;
 using OpenGIS.Utils.Engine.Enums;
@@ -47,7 +48,7 @@ public sealed class PostgisFeatureSource : IFeatureSource
 
     public async Task<long> GetFeatureCountAsync()
     {
-        await EnsureBaseLayerLoadedAsync();
+        await EnsureBaseLayerLoadedAsync(CancellationToken.None);
         return _baseLayer!.Features.Count;
     }
 
@@ -60,7 +61,7 @@ public sealed class PostgisFeatureSource : IFeatureSource
 
         if (boundingBox is null && string.IsNullOrWhiteSpace(filterExpression))
         {
-            await EnsureBaseLayerLoadedAsync();
+            await EnsureBaseLayerLoadedAsync(cancellationToken);
             layer = _baseLayer!;
         }
         else
@@ -83,30 +84,38 @@ public sealed class PostgisFeatureSource : IFeatureSource
 
     public ValueTask DisposeAsync()
     {
-        _lock.Dispose();
+        try
+        {
+            _lock.Dispose();
+        }
+        catch (ObjectDisposedException)
+        {
+            // Already disposed or in the process of being disposed
+        }
+
         _baseLayer = null;
         _boundingBox = null;
         _spatialReference = null;
         return ValueTask.CompletedTask;
     }
 
-    private async Task EnsureBaseLayerLoadedAsync()
+    private async Task EnsureBaseLayerLoadedAsync(CancellationToken cancellationToken)
     {
         if (_baseLayer is not null) return;
 
-        await _lock.WaitAsync();
+        await _lock.WaitAsync(cancellationToken);
         try
         {
             if (_baseLayer is not null) return;
 
-            _baseLayer = await LoadLayerAsync(attributeFilter: null, spatialFilterWkt: null, CancellationToken.None);
+            _baseLayer = await LoadLayerAsync(attributeFilter: null, spatialFilterWkt: null, cancellationToken);
             _boundingBox = ComputeBoundingBox(_baseLayer);
 
             if (_baseLayer.Wkid.HasValue)
             {
                 _spatialReference = new Utilities.SpatialReference(
                     _baseLayer.Wkid.Value,
-                    $"EPSG:{_baseLayer.Wkid.Value}");
+                    Utilities.SpatialReference.BuildWkt(_baseLayer.Wkid.Value));
             }
 
             Metadata = Metadata with { FeatureCount = _baseLayer.Features.Count };
@@ -145,12 +154,27 @@ public sealed class PostgisFeatureSource : IFeatureSource
     private string BuildConnectionString()
     {
         var password = _encryption.Decrypt(_config.EncryptedPassword ?? string.Empty);
-        return $"PG:host={_config.Host} port={_config.Port} dbname={_config.Database} user={_config.UserName} password={password}";
+        var builder = new Npgsql.NpgsqlConnectionStringBuilder
+        {
+            Host = _config.Host,
+            Port = _config.Port,
+            Database = _config.Database,
+            Username = _config.UserName,
+            Password = password
+        };
+
+        return $"PG:host='{EscapePgValue(builder.Host!)}' port={builder.Port} dbname='{EscapePgValue(builder.Database!)}' user='{EscapePgValue(builder.Username!)}' password='{EscapePgValue(password)}'";
+    }
+
+    private static string EscapePgValue(string value)
+    {
+        if (string.IsNullOrEmpty(value)) return value;
+        return value.Replace("\\", "\\\\").Replace("'", "\\'");
     }
 
     private static string BuildSpatialFilterWkt(Envelope envelope)
     {
-        var factory = new NetTopologySuite.Geometries.GeometryFactory();
+        var factory = NtsGeometryServices.Instance.CreateGeometryFactory();
         var polygon = factory.ToGeometry(envelope);
         return WktConverter.ToWkt(polygon);
     }

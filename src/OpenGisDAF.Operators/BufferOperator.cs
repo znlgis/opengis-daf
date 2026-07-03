@@ -1,22 +1,17 @@
 using System.Diagnostics;
+using System.Globalization;
 using Microsoft.Extensions.Logging;
 using NetTopologySuite.Geometries;
 using OpenGIS.Utils.Geometry;
 using OpenGisDAF.Adapters;
 using OpenGisDAF.Adapters.Utilities;
 using OpenGisDAF.Core;
+using ExecutionContext = OpenGisDAF.Core.ExecutionContext;
 
 namespace OpenGisDAF.Operators;
 
 public sealed class BufferOperator : IOperator
 {
-    private readonly ILogger<BufferOperator> _logger;
-
-    public BufferOperator(ILogger<BufferOperator> logger)
-    {
-        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-    }
-
     public OperatorMetadata Metadata { get; } = new()
     {
         Id = "buffer",
@@ -63,9 +58,8 @@ public sealed class BufferOperator : IOperator
                 Message = "缺少必需参数 'distance'。"
             });
         }
-        else
+        else if (double.TryParse(distValue?.ToString(), NumberStyles.Float, CultureInfo.InvariantCulture, out var distance))
         {
-            var distance = Convert.ToDouble(distValue);
             if (distance <= 0)
             {
                 warnings.Add(new ValidationError
@@ -75,6 +69,15 @@ public sealed class BufferOperator : IOperator
                     Message = $"缓冲距离为 {distance}，小于等于零可能导致空结果。"
                 });
             }
+        }
+        else
+        {
+            errors.Add(new ValidationError
+            {
+                Severity = ValidationSeverity.Error,
+                Code = ErrorCode.CfgParamOutOfRange,
+                Message = $"参数 'distance' 值 '{distValue}' 不是有效的数值。"
+            });
         }
 
         if (!config.Inputs.ContainsKey("source"))
@@ -98,14 +101,21 @@ public sealed class BufferOperator : IOperator
     public async Task<ExecutionResult> ExecuteAsync(
         IReadOnlyDictionary<string, IFeatureSource> inputs,
         IReadOnlyDictionary<string, object?> parameters,
-        OpenGisDAF.Core.ExecutionContext context,
+        ExecutionContext context,
         CancellationToken cancellationToken)
     {
         var sw = Stopwatch.StartNew();
 
         try
         {
-            var distance = Convert.ToDouble(parameters["distance"]);
+            if (!parameters.TryGetValue("distance", out var distObj) ||
+                !double.TryParse(distObj?.ToString(), NumberStyles.Float, CultureInfo.InvariantCulture, out var distance))
+            {
+                return FailureResult(
+                    sw.Elapsed,
+                    ErrorCode.CfgParamOutOfRange,
+                    "参数 'distance' 缺失或不是有效的数值。");
+            }
 
             if (!inputs.TryGetValue("source", out var source))
             {

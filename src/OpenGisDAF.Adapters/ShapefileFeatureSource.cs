@@ -71,6 +71,7 @@ public sealed class ShapefileFeatureSource : IFeatureSource
     private OguLayer LoadLayer()
     {
         _logger.LogDebug("Loading Shapefile: {Path}", _shapefilePath);
+        // ShpUtil.ReadShapefile internally detects encoding via .cpg file (or falls back to system default)
         return ShpUtil.ReadShapefile(_shapefilePath);
     }
 

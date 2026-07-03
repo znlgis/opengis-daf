@@ -146,6 +146,7 @@ public sealed class ShapefileFeatureSink : IFeatureSink
             Core.GeometryType.MultiLineString => OpenGIS.Utils.Engine.Enums.GeometryType.MULTILINESTRING,
             Core.GeometryType.Polygon => OpenGIS.Utils.Engine.Enums.GeometryType.POLYGON,
             Core.GeometryType.MultiPolygon => OpenGIS.Utils.Engine.Enums.GeometryType.MULTIPOLYGON,
+            Core.GeometryType.GeometryCollection => OpenGIS.Utils.Engine.Enums.GeometryType.GEOMETRYCOLLECTION,
             _ => OpenGIS.Utils.Engine.Enums.GeometryType.UNKNOWN
         };
     }

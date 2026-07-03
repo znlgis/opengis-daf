@@ -122,7 +122,22 @@ public sealed class PostgisFeatureSink : IFeatureSink
     private string BuildConnectionString(ConnectionConfig config)
     {
         var password = _encryption.Decrypt(config.EncryptedPassword ?? string.Empty);
-        return $"PG:host={config.Host} port={config.Port} dbname={config.Database} user={config.UserName} password={password}";
+        var builder = new Npgsql.NpgsqlConnectionStringBuilder
+        {
+            Host = config.Host,
+            Port = config.Port,
+            Database = config.Database,
+            Username = config.UserName,
+            Password = password
+        };
+
+        return $"PG:host='{EscapePgValue(builder.Host!)}' port={builder.Port} dbname='{EscapePgValue(builder.Database!)}' user='{EscapePgValue(builder.Username!)}' password='{EscapePgValue(password)}'";
+    }
+
+    private static string EscapePgValue(string value)
+    {
+        if (string.IsNullOrEmpty(value)) return value;
+        return value.Replace("\\", "\\\\").Replace("'", "\\'");
     }
 
     private IList<OguField> BuildFieldDefinitions()
@@ -133,6 +148,8 @@ public sealed class PostgisFeatureSink : IFeatureSink
         var fields = new List<OguField>(_schema.ProducedFields.Count);
         foreach (var fieldDef in _schema.ProducedFields)
         {
+            if (fieldDef.Type == FieldType.Geometry) continue;
+
             fields.Add(new OguField
             {
                 Name = fieldDef.Name,

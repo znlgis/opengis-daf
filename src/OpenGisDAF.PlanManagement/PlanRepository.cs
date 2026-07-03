@@ -22,7 +22,23 @@ public sealed class PlanRepository : IPlanRepository
             Directory.CreateDirectory(_rootPath);
     }
 
-    internal string? FindPlanFile(string planId)
+    private static void ValidateSafePathSegment(string? segment, string paramName)
+    {
+        if (segment is null)
+            return;
+
+        if (segment.Contains("..") || segment.Contains('\\') || segment.Contains('/'))
+            throw new ArgumentException(
+                $"Path segment '{segment}' contains invalid characters.", paramName);
+    }
+
+    public string? FindPlanFile(string planId)
+    {
+        ValidateSafePathSegment(planId, nameof(planId));
+        return FindPlanFileInternal(planId);
+    }
+
+    private string? FindPlanFileInternal(string planId)
     {
         if (!Directory.Exists(_rootPath))
             return null;
@@ -41,6 +57,9 @@ public sealed class PlanRepository : IPlanRepository
     {
         ArgumentNullException.ThrowIfNull(plan);
 
+        ValidateSafePathSegment(plan.Id, nameof(plan.Id));
+        ValidateSafePathSegment(plan.Group, nameof(plan.Group));
+
         var group = plan.Group ?? "default";
         var dir = Path.Combine(_rootPath, group);
         Directory.CreateDirectory(dir);
@@ -56,7 +75,8 @@ public sealed class PlanRepository : IPlanRepository
     {
         ArgumentNullException.ThrowIfNull(planId);
 
-        var filePath = FindPlanFile(planId);
+        ValidateSafePathSegment(planId, nameof(planId));
+        var filePath = FindPlanFileInternal(planId);
         if (filePath is null)
         {
             _logger?.LogWarning("Plan file not found for plan ID: {PlanId}", planId);
@@ -73,7 +93,8 @@ public sealed class PlanRepository : IPlanRepository
     {
         ArgumentNullException.ThrowIfNull(planId);
 
-        var filePath = FindPlanFile(planId);
+        ValidateSafePathSegment(planId, nameof(planId));
+        var filePath = FindPlanFileInternal(planId);
         if (filePath is null)
         {
             _logger?.LogWarning("Plan file not found for deletion, plan ID: {PlanId}", planId);
@@ -89,7 +110,8 @@ public sealed class PlanRepository : IPlanRepository
     {
         ArgumentNullException.ThrowIfNull(planId);
 
-        var filePath = FindPlanFile(planId);
+        ValidateSafePathSegment(planId, nameof(planId));
+        var filePath = FindPlanFileInternal(planId);
         return Task.FromResult(filePath is not null);
     }
 
@@ -97,6 +119,8 @@ public sealed class PlanRepository : IPlanRepository
         string? group = null,
         CancellationToken cancellationToken = default)
     {
+        ValidateSafePathSegment(group, nameof(group));
+
         var summaries = new List<PlanSummary>();
 
         if (group is not null)
