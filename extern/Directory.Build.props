@@ -1,0 +1,8 @@
+<Project>
+  <!-- Override root settings for external submodules: relax code analysis -->
+  <PropertyGroup>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <EnforceCodeStyleInBuild>false</EnforceCodeStyleInBuild>
+    <NoWarn>$(NoWarn);CA1707;CA1720;CA1304;CA1305;CA1310;CA1311;CA1822;CA1825;CA1852;CA1861;CA1869;CA2201</NoWarn>
+  </PropertyGroup>
+</Project>

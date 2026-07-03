@@ -1,0 +1,304 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://opengis-daf.io/schemas/plan-schema.json",
+  "title": "AnalysisPlan Schema",
+  "description": "Schema for validating AnalysisPlan JSON documents.",
+  "type": "object",
+  "required": ["id", "name", "version", "items"],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Unique identifier for the analysis plan."
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable name of the plan."
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "description": "Semantic version string (e.g. 1.0.0)."
+    },
+    "group": {
+      "type": "string",
+      "description": "Optional grouping label for the plan."
+    },
+    "items": {
+      "type": "array",
+      "description": "Ordered list of analysis items in the plan.",
+      "items": { "$ref": "#/definitions/AnalysisItem" }
+    },
+    "subPlans": {
+      "type": "array",
+      "description": "Nested sub-plans (P1 simplified).",
+      "items": { "$ref": "#" }
+    },
+    "executionPolicy": {
+      "$ref": "#/definitions/PlanExecutionPolicy"
+    },
+    "planExecutionPolicy": {
+      "$ref": "#/definitions/PlanExecutionPolicy"
+    }
+  },
+  "definitions": {
+    "AnalysisItem": {
+      "type": "object",
+      "required": ["id", "operatorId", "output"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for this item within the plan."
+        },
+        "operatorId": {
+          "type": "string",
+          "description": "Identifier of the operator to execute."
+        },
+        "operatorVersion": {
+          "type": "string",
+          "description": "Optional version constraint for the operator."
+        },
+        "inputs": {
+          "type": "object",
+          "description": "Input bindings keyed by input name.",
+          "additionalProperties": { "$ref": "#/definitions/InputBinding" }
+        },
+        "parameters": {
+          "type": "object",
+          "description": "Operator parameters as key-value pairs."
+        },
+        "output": {
+          "$ref": "#/definitions/OutputBinding"
+        },
+        "executionPolicy": {
+          "$ref": "#/definitions/ItemExecutionPolicy"
+        }
+      }
+    },
+    "InputBinding": {
+      "type": "object",
+      "required": ["type", "sourceId"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["External", "Upstream", "SubPlan"],
+          "description": "Binding type: External dataset, upstream item result, or sub-plan output."
+        },
+        "sourceId": {
+          "type": "string",
+          "description": "Identifier of the data source or upstream item."
+        },
+        "outputKey": {
+          "type": "string",
+          "description": "Optional key to select a specific output from the source."
+        }
+      }
+    },
+    "OutputBinding": {
+      "type": "object",
+      "required": ["adapterType", "targetPath"],
+      "additionalProperties": false,
+      "properties": {
+        "adapterType": {
+          "type": "string",
+          "description": "Type of output adapter (e.g. Shapefile, GeoPackage, PostGIS)."
+        },
+        "targetPath": {
+          "type": "string",
+          "description": "Target file path or connection identifier."
+        },
+        "connectionConfig": {
+          "$ref": "#/definitions/ConnectionConfig"
+        },
+        "fieldSelection": {
+          "type": "array",
+          "description": "Optional list of field names to include in output.",
+          "items": { "type": "string" }
+        },
+        "isIntermediate": {
+          "type": "boolean",
+          "default": false,
+          "description": "If true, the result may be discarded after downstream consumption."
+        },
+        "formatOptions": {
+          "$ref": "#/definitions/OutputFormatOptions"
+        }
+      }
+    },
+    "ConnectionConfig": {
+      "type": "object",
+      "required": ["dataSourceId", "adapterType", "host", "port", "database", "userName"],
+      "additionalProperties": false,
+      "properties": {
+        "dataSourceId": {
+          "type": "string",
+          "description": "Identifier of the registered data source."
+        },
+        "adapterType": {
+          "type": "string",
+          "description": "Database adapter type (e.g. PostGIS)."
+        },
+        "host": {
+          "type": "string",
+          "description": "Database server hostname or IP."
+        },
+        "port": {
+          "type": "integer",
+          "description": "Database server port number."
+        },
+        "database": {
+          "type": "string",
+          "description": "Database name."
+        },
+        "userName": {
+          "type": "string",
+          "description": "Database user name."
+        },
+        "encryptedPassword": {
+          "type": "string",
+          "description": "Encrypted password string."
+        },
+        "additionalOptions": {
+          "type": "object",
+          "description": "Additional connection parameters.",
+          "additionalProperties": { "type": "string" }
+        }
+      }
+    },
+    "OutputFormatOptions": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "decimalPlaces": {
+          "type": "integer",
+          "description": "Number of decimal places for numeric output."
+        },
+        "dateFormat": {
+          "type": "string",
+          "description": "Date format string (e.g. yyyy-MM-dd)."
+        },
+        "encoding": {
+          "type": "string",
+          "description": "Output file encoding (e.g. UTF-8)."
+        },
+        "writeHeader": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether to write a header row."
+        }
+      }
+    },
+    "ItemExecutionPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "maxRetries": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0,
+          "description": "Maximum number of retry attempts on failure."
+        },
+        "retryInterval": {
+          "type": "string",
+          "default": "00:00:05",
+          "description": "Interval between retries in HH:mm:ss format."
+        },
+        "exponentialBackoff": {
+          "type": "boolean",
+          "default": true,
+          "description": "Use exponential backoff for retry intervals."
+        },
+        "timeout": {
+          "type": "string",
+          "default": "00:30:00",
+          "description": "Maximum execution duration in HH:mm:ss format."
+        },
+        "logGranularity": {
+          "type": "string",
+          "enum": ["Plan", "Item", "Feature"],
+          "default": "Item",
+          "description": "Granularity level for execution logging."
+        },
+        "retainIntermediateResults": {
+          "type": "boolean",
+          "default": false,
+          "description": "Keep intermediate results after execution completes."
+        },
+        "qcMode": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable quality control mode for this item."
+        }
+      }
+    },
+    "PlanExecutionPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "maxParallelism": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 4,
+          "description": "Maximum number of items to execute in parallel."
+        },
+        "globalConcurrency": {
+          "$ref": "#/definitions/GlobalConcurrencyPolicy"
+        },
+        "failurePolicy": {
+          "type": "string",
+          "enum": ["StopOnAny", "ContinueIndependent"],
+          "default": "StopOnAny",
+          "description": "Policy for handling item failures."
+        },
+        "enablePartitioning": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable spatial partitioning for large datasets."
+        },
+        "partitionCount": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 8,
+          "description": "Number of partitions when partitioning is enabled."
+        },
+        "qualityReportConfig": {
+          "$ref": "#/definitions/QualityReportConfig"
+        }
+      }
+    },
+    "GlobalConcurrencyPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "maxGlobalParallelism": {
+          "type": "integer",
+          "default": 16,
+          "description": "Maximum parallelism across all plans."
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether global concurrency control is active."
+        }
+      }
+    },
+    "QualityReportConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ruleWeights": {
+          "type": "object",
+          "description": "Quality rule names mapped to their weights.",
+          "additionalProperties": { "type": "number" }
+        },
+        "minPassRate": {
+          "type": "number",
+          "default": 0.95,
+          "description": "Minimum acceptable pass rate (0.0 to 1.0)."
+        }
+      }
+    }
+  }
+}

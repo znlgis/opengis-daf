@@ -4,6 +4,13 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <NoWarn>CA1873;CA1848;CA1859;CA1416;CA1305;CA1822</NoWarn>
   </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\OpenGisDAF.Core\OpenGisDAF.Core.csproj" />
+    <ProjectReference Include="..\OpenGisDAF.Adapters\OpenGisDAF.Adapters.csproj" />
+    <ProjectReference Include="..\..\extern\opengis-utils-for-net\src\OpenGIS.Utils\OpenGIS.Utils.csproj" />
+  </ItemGroup>
 
 </Project>
