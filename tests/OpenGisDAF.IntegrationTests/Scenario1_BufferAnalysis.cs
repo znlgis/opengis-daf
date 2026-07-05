@@ -57,7 +57,7 @@ public sealed class Scenario1_BufferAnalysis : IClassFixture<DafTestHost>
         var scheduler = _host.Services.GetRequiredService<ISchedulingEngine>();
 
         // Act
-        var stats = await scheduler.ExecuteAsync(plan);
+        var stats = await scheduler.ExecuteAsync(plan, TestContext.Current.CancellationToken);
 
         // Assert
         stats.ItemStats.Should().HaveCount(1);
@@ -65,7 +65,7 @@ public sealed class Scenario1_BufferAnalysis : IClassFixture<DafTestHost>
 
         File.Exists(outputPath).Should().BeTrue("GeoJSON 输出文件应存在");
 
-        var content = await File.ReadAllTextAsync(outputPath);
+        var content = await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken);
         content.Should().Contain("\"Polygon\"", "缓冲区结果应为面几何");
 
         using var doc = JsonDocument.Parse(content);

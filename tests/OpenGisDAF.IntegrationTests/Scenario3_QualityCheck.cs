@@ -58,7 +58,7 @@ public sealed class Scenario3_QualityCheck : IClassFixture<DafTestHost>
         var scheduler = _host.Services.GetRequiredService<ISchedulingEngine>();
 
         // Act
-        var stats = await scheduler.ExecuteAsync(plan);
+        var stats = await scheduler.ExecuteAsync(plan, TestContext.Current.CancellationToken);
 
         // Assert
         stats.QcStats.Should().NotBeNull("QC 统计应存在");

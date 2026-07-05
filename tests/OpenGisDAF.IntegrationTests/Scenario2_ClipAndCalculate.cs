@@ -85,7 +85,7 @@ public sealed class Scenario2_ClipAndCalculate : IClassFixture<DafTestHost>
         var scheduler = _host.Services.GetRequiredService<ISchedulingEngine>();
 
         // Act
-        var stats = await scheduler.ExecuteAsync(plan);
+        var stats = await scheduler.ExecuteAsync(plan, TestContext.Current.CancellationToken);
 
         // Assert
         stats.ItemStats.Should().HaveCount(2);
@@ -95,7 +95,7 @@ public sealed class Scenario2_ClipAndCalculate : IClassFixture<DafTestHost>
         File.Exists(clipOutputPath).Should().BeTrue("裁剪输出文件应存在");
         File.Exists(calcOutputPath).Should().BeTrue("字段计算输出文件应存在");
 
-        var calcContent = await File.ReadAllTextAsync(calcOutputPath);
+        var calcContent = await File.ReadAllTextAsync(calcOutputPath, TestContext.Current.CancellationToken);
         using var doc = JsonDocument.Parse(calcContent);
         var features = doc.RootElement.GetProperty("features");
         features.GetArrayLength().Should().BeGreaterThan(0, "应产出至少一个要素");
