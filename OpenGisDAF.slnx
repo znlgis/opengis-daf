@@ -9,4 +9,7 @@
     <Project Path="src/OpenGisDAF.PlanManagement/OpenGisDAF.PlanManagement.csproj" />
     <Project Path="src/OpenGisDAF.Scheduling/OpenGisDAF.Scheduling.csproj" />
   </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/OpenGisDAF.IntegrationTests/OpenGisDAF.IntegrationTests.csproj" />
+  </Folder>
 </Solution>
