@@ -14,10 +14,9 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<SinkFactory>();
         services.AddSingleton<IExecutionEngine, ExecutionEngine>();
 
-        // TODO: Register after Phase E (QC components)
-        // services.AddSingleton<QcResultCollector>();
-        // services.AddSingleton<QualityCalculator>();
-        // services.AddSingleton<QualityReportGenerator>();
+        services.AddSingleton<QcResultCollector>();
+        services.AddSingleton<QualityCalculator>();
+        services.AddSingleton<QualityReportGenerator>();
 
         return services;
     }
