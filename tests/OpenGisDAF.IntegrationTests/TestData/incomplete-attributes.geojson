@@ -1,0 +1,10 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    { "type": "Feature", "properties": { "fid": 1, "code": "A001", "name": "Site Alpha", "description": "OK" }, "geometry": { "type": "Point", "coordinates": [100, 20] } },
+    { "type": "Feature", "properties": { "fid": 2, "code": null, "name": "Site Beta", "description": "OK" }, "geometry": { "type": "Point", "coordinates": [101, 21] } },
+    { "type": "Feature", "properties": { "fid": 3, "code": "A003", "name": null, "description": "OK" }, "geometry": { "type": "Point", "coordinates": [102, 22] } },
+    { "type": "Feature", "properties": { "fid": 4, "code": null, "name": null, "description": "" }, "geometry": { "type": "Point", "coordinates": [103, 23] } },
+    { "type": "Feature", "properties": { "fid": 5, "code": "A005", "name": "Site Epsilon", "description": "OK" }, "geometry": { "type": "Point", "coordinates": [104, 24] } }
+  ]
+}

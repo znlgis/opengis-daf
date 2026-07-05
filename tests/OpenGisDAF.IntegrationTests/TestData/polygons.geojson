@@ -1,0 +1,8 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    { "type": "Feature", "properties": { "id": 1, "region": "North" }, "geometry": { "type": "Polygon", "coordinates": [[[100, 40], [105, 40], [105, 45], [100, 45], [100, 40]]] } },
+    { "type": "Feature", "properties": { "id": 2, "region": "South" }, "geometry": { "type": "Polygon", "coordinates": [[[110, 30], [115, 30], [115, 35], [110, 35], [110, 30]]] } },
+    { "type": "Feature", "properties": { "id": 3, "region": "East" }, "geometry": { "type": "Polygon", "coordinates": [[[120, 35], [125, 35], [125, 40], [120, 40], [120, 35]]] } }
+  ]
+}
