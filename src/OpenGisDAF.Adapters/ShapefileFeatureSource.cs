@@ -46,15 +46,35 @@ public sealed class ShapefileFeatureSource : IFeatureSource
     {
         await Task.Yield();
 
+        if (!string.IsNullOrWhiteSpace(filterExpression))
+        {
+            _logger.LogWarning(
+                "ShapefileFeatureSource does not support attribute filtering. " +
+                "The filter expression '{FilterExpression}' will be ignored. " +
+                "All features from '{Path}' will be returned.",
+                filterExpression, _shapefilePath);
+        }
+
         var layer = _layer.Value;
         foreach (var oguFeature in layer.Features)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            var feature = new OguFeatureWrapper(oguFeature);
+            IFeature feature;
+            try
+            {
+                var wrapper = new OguFeatureWrapper(oguFeature);
+                if (boundingBox is not null && !boundingBox.Intersects(wrapper.Geometry.EnvelopeInternal))
+                    continue;
 
-            if (boundingBox is not null && !boundingBox.Intersects(feature.Geometry.EnvelopeInternal))
+                feature = wrapper;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Skipping feature {Fid} due to conversion error in {Path}",
+                    oguFeature.Fid, _shapefilePath);
                 continue;
+            }
 
             yield return feature;
         }

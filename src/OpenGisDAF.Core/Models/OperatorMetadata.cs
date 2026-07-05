@@ -6,7 +6,7 @@ public sealed record OperatorMetadata
     public string Name { get; init; } = null!;
     public string Category { get; init; } = null!;
     public string Description { get; init; } = null!;
-    public string[] Tags { get; init; } = [];
+    public IReadOnlyList<string> Tags { get; init; } = [];
     public string Version { get; init; } = null!;
     public string? MinFrameworkVersion { get; init; }
     public string? CompatibilityNotes { get; init; }

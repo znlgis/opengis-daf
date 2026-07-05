@@ -29,7 +29,7 @@ public sealed class PlanVersionManager : IPlanVersionManager
     {
         ArgumentNullException.ThrowIfNull(planId);
 
-        var filePath = _repository.FindPlanFile(planId);
+        var filePath = await _repository.FindPlanFileAsync(planId, cancellationToken);
         if (filePath is null)
         {
             _logger?.LogWarning("Plan file not found for backup, plan ID: {PlanId}", planId);
@@ -63,19 +63,21 @@ public sealed class PlanVersionManager : IPlanVersionManager
                 "Backup created for plan {PlanId}: {BackupPath} (version {Version})",
                 planId, bakPath, nextVersion);
         }
+
+        _backupLocks.TryRemove(planId, out _);
     }
 
-    public Task<IReadOnlyList<VersionHistoryEntry>> GetVersionHistoryAsync(
+    public async Task<IReadOnlyList<VersionHistoryEntry>> GetVersionHistoryAsync(
         string planId,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(planId);
 
-        var filePath = _repository.FindPlanFile(planId);
+        var filePath = await _repository.FindPlanFileAsync(planId, cancellationToken);
         if (filePath is null)
         {
             _logger?.LogWarning("Plan file not found for version history, plan ID: {PlanId}", planId);
-            return Task.FromResult<IReadOnlyList<VersionHistoryEntry>>([]);
+            return [];
         }
 
         var dir = Path.GetDirectoryName(filePath)!;
@@ -100,7 +102,7 @@ public sealed class PlanVersionManager : IPlanVersionManager
         }
 
         entries.Sort((a, b) => b.VersionNumber.CompareTo(a.VersionNumber));
-        return Task.FromResult<IReadOnlyList<VersionHistoryEntry>>(entries);
+        return entries;
     }
 
     public async Task<AnalysisPlan> RollbackAsync(
@@ -124,14 +126,24 @@ public sealed class PlanVersionManager : IPlanVersionManager
 
         await BackupAsync(planId, cancellationToken);
 
-        var currentFilePath = _repository.FindPlanFile(planId);
+        var currentFilePath = await _repository.FindPlanFileAsync(planId, cancellationToken);
         if (currentFilePath is not null)
         {
             var newJson = _serializer.Serialize(plan);
-            await File.WriteAllTextAsync(currentFilePath, newJson, cancellationToken);
-            _logger?.LogInformation(
-                "Rollback completed for plan {PlanId} to version {Version}",
-                planId, versionNumber);
+            var tmpPath = currentFilePath + ".tmp";
+            try
+            {
+                await File.WriteAllTextAsync(tmpPath, newJson, cancellationToken);
+                File.Move(tmpPath, currentFilePath, overwrite: true);
+                _logger?.LogInformation(
+                    "Rollback completed for plan {PlanId} to version {Version}",
+                    planId, versionNumber);
+            }
+            catch
+            {
+                try { if (File.Exists(tmpPath)) File.Delete(tmpPath); } catch { }
+                throw;
+            }
         }
 
         return plan;
@@ -189,7 +201,7 @@ public sealed class PlanVersionManager : IPlanVersionManager
 
         if (version == 0)
         {
-            var filePath = _repository.FindPlanFile(planId);
+            var filePath = await _repository.FindPlanFileAsync(planId, cancellationToken);
             if (filePath is null)
                 throw new FileNotFoundException($"Plan file not found for plan ID: {planId}");
 
@@ -197,7 +209,7 @@ public sealed class PlanVersionManager : IPlanVersionManager
         }
         else
         {
-            var filePath = _repository.FindPlanFile(planId);
+            var filePath = await _repository.FindPlanFileAsync(planId, cancellationToken);
             if (filePath is null)
                 throw new FileNotFoundException($"Plan file not found for plan ID: {planId}");
 

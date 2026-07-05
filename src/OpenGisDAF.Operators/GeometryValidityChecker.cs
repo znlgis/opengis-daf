@@ -53,7 +53,6 @@ public sealed class GeometryValidityChecker : IOperator
 
         return new ValidationResult
         {
-            IsValid = errors.Count == 0,
             Errors = errors,
             Warnings = warnings
         };

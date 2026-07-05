@@ -18,16 +18,14 @@ public sealed class SinkFactory
 
     public IFeatureSink CreateSink(OutputBinding binding)
     {
-        var adapterType = binding.AdapterType.ToLowerInvariant();
-
-        return adapterType switch
+        return binding.AdapterType switch
         {
-            "console" => new ConsoleFeatureSink(),
-            "geojson" => CreateGeoJsonSink(binding),
-            "shapefile" => CreateShapefileSink(binding),
-            "postgis" => CreatePostgisSink(binding),
+            OutputAdapterType.ConsoleWriter => new ConsoleFeatureSink(),
+            OutputAdapterType.GeoJsonWriter => CreateGeoJsonSink(binding),
+            OutputAdapterType.ShapefileWriter => CreateShapefileSink(binding),
+            OutputAdapterType.PostGISWriter => CreatePostgisSink(binding),
             _ => throw new NotSupportedException(
-                $"不支持的目标适配器类型: '{binding.AdapterType}'。支持: console, geojson, shapefile, postgis")
+                $"不支持的目标适配器类型: '{binding.AdapterType}'。支持: ConsoleWriter, GeoJsonWriter, ShapefileWriter, PostGISWriter")
         };
     }
 

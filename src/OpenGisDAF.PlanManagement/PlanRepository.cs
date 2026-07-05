@@ -32,10 +32,10 @@ public sealed class PlanRepository : IPlanRepository
                 $"Path segment '{segment}' contains invalid characters.", paramName);
     }
 
-    public string? FindPlanFile(string planId)
+    public Task<string?> FindPlanFileAsync(string planId, CancellationToken cancellationToken = default)
     {
         ValidateSafePathSegment(planId, nameof(planId));
-        return FindPlanFileInternal(planId);
+        return Task.FromResult(FindPlanFileInternal(planId));
     }
 
     private string? FindPlanFileInternal(string planId)
@@ -67,7 +67,9 @@ public sealed class PlanRepository : IPlanRepository
         var filePath = Path.Combine(dir, $"{plan.Id}.json");
         var json = _serializer.Serialize(plan);
 
-        await File.WriteAllTextAsync(filePath, json, cancellationToken);
+        var tmpPath = filePath + ".tmp";
+        await File.WriteAllTextAsync(tmpPath, json, cancellationToken);
+        File.Move(tmpPath, filePath, overwrite: true);
         _logger?.LogInformation("Plan {PlanId} saved to {FilePath}", plan.Id, filePath);
     }
 

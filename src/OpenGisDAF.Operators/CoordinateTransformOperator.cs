@@ -86,7 +86,6 @@ public sealed class CoordinateTransformOperator : IOperator
 
         return new ValidationResult
         {
-            IsValid = errors.Count == 0,
             Errors = errors
         };
     }
@@ -120,12 +119,21 @@ public sealed class CoordinateTransformOperator : IOperator
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                var wkt = WktConverter.ToWkt(feature.Geometry);
-                var transformedWkt = CrsUtil.Transform(wkt, sourceEpsg.Value, targetEpsg.Value);
-                var newGeometry = WktConverter.FromWkt(transformedWkt);
+                try
+                {
+                    var wkt = WktConverter.ToWkt(feature.Geometry);
+                    var transformedWkt = CrsUtil.Transform(wkt, sourceEpsg.Value, targetEpsg.Value);
+                    var newGeometry = WktConverter.FromWkt(transformedWkt);
 
-                transformedFeatures.Add(new Feature(feature.Id, newGeometry, feature.Attributes));
-                featureCount++;
+                    transformedFeatures.Add(new Feature(feature.Id, newGeometry, feature.Attributes));
+                    featureCount++;
+                }
+                catch (Exception ex)
+                {
+                    context.Logger.LogWarning(ex,
+                        "[CoordinateTransform] 要素坐标转换异常: feature={FeatureId}",
+                        feature.Id);
+                }
             }
 
             var output = new InMemoryFeatureSource(transformedFeatures);

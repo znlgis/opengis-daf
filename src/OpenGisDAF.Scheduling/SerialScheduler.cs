@@ -14,6 +14,7 @@ public sealed partial class SerialScheduler : ISchedulingEngine
     private readonly SinkFactory _sinkFactory;
     private readonly IResultCache _resultCache;
     private readonly GlobalConcurrencyController _concurrencyController;
+    private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<SerialScheduler> _logger;
 
     public SerialScheduler(
@@ -22,6 +23,7 @@ public sealed partial class SerialScheduler : ISchedulingEngine
         SinkFactory sinkFactory,
         IResultCache resultCache,
         GlobalConcurrencyController concurrencyController,
+        IServiceProvider serviceProvider,
         ILogger<SerialScheduler> logger)
     {
         _executionEngine = executionEngine;
@@ -29,6 +31,7 @@ public sealed partial class SerialScheduler : ISchedulingEngine
         _sinkFactory = sinkFactory;
         _resultCache = resultCache;
         _concurrencyController = concurrencyController;
+        _serviceProvider = serviceProvider;
         _logger = logger;
     }
 
@@ -57,7 +60,7 @@ public sealed partial class SerialScheduler : ISchedulingEngine
         }
 
         // Step 2: Topological sort
-        var sortResult = TopologicalSorter.SortFromDag(plan.Items, dagResult.Adjacency!);
+        var sortResult = TopologicalSorter.Sort(plan.Items, dagResult.Adjacency!);
         if (!sortResult.IsComplete)
         {
             Log.SortIncomplete(_logger);
@@ -71,13 +74,8 @@ public sealed partial class SerialScheduler : ISchedulingEngine
         }
 
         // Step 3: Create execution context
-        var context = new ExecutionContext
-        {
-            PlanId = plan.Id,
-            ExecutionId = executionId,
-            ResultCache = _resultCache,
-            Logger = _logger
-        };
+        var context = new ExecutionContext(
+            plan.Id, executionId, _resultCache, _logger, _serviceProvider, null!);
 
         // Step 4: Execute items in topological order
         var externalSources = new Dictionary<string, IFeatureSource>();
@@ -115,37 +113,37 @@ public sealed partial class SerialScheduler : ISchedulingEngine
                         Log.ItemExecutionFailed(
                             _logger, item.Id, result.ErrorCode ?? "UNKNOWN", result.ErrorMessage ?? "无错误信息");
 
-                    if (plan.ExecutionPolicy.FailurePolicy == FailurePolicy.StopOnAny)
-                    {
-                        Log.StopOnAny(_logger);
-                        itemStats.Add(new PerItemStats
+                        if (plan.ExecutionPolicy.FailurePolicy == FailurePolicy.StopOnAny)
                         {
-                            ItemId = item.Id,
-                            OperatorId = item.OperatorId,
-                            Elapsed = itemSw.Elapsed,
-                            FailedCount = 1
-                        });
-
-                        // Track skipped items
-                        var foundCurrent = false;
-                        foreach (var remaining in sortResult.OrderedItems)
-                        {
-                            if (!foundCurrent)
-                            {
-                                if (remaining.Id == item.Id)
-                                    foundCurrent = true;
-                                continue;
-                            }
+                            Log.StopOnAny(_logger);
                             itemStats.Add(new PerItemStats
                             {
-                                ItemId = remaining.Id,
-                                OperatorId = remaining.OperatorId,
-                                Elapsed = TimeSpan.Zero,
-                                SkippedCount = 1
+                                ItemId = item.Id,
+                                OperatorId = item.OperatorId,
+                                Elapsed = itemSw.Elapsed,
+                                FailedCount = 1
                             });
+
+                            // Track skipped items
+                            var foundCurrent = false;
+                            foreach (var remaining in sortResult.OrderedItems)
+                            {
+                                if (!foundCurrent)
+                                {
+                                    if (remaining.Id == item.Id)
+                                        foundCurrent = true;
+                                    continue;
+                                }
+                                itemStats.Add(new PerItemStats
+                                {
+                                    ItemId = remaining.Id,
+                                    OperatorId = remaining.OperatorId,
+                                    Elapsed = TimeSpan.Zero,
+                                    SkippedCount = 1
+                                });
+                            }
+                            break;
                         }
-                        break;
-                    }
                     }
 
                     itemStats.Add(new PerItemStats
@@ -163,6 +161,22 @@ public sealed partial class SerialScheduler : ISchedulingEngine
                 }
             }
         }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            Log.PlanExecutionAborted(_logger, ex);
+            planSw.Stop();
+            return new PlanExecutionStatistics
+            {
+                StartTime = startTime,
+                EndTime = DateTimeOffset.UtcNow,
+                TotalElapsed = planSw.Elapsed,
+                ItemStats = itemStats
+            };
+        }
         finally
         {
             // Cleanup external sources
@@ -171,6 +185,8 @@ public sealed partial class SerialScheduler : ISchedulingEngine
                 await source.DisposeAsync();
             }
         }
+
+        await _resultCache.ClearAsync(cancellationToken);
 
         planSw.Stop();
         var endTime = DateTimeOffset.UtcNow;
@@ -318,5 +334,9 @@ public sealed partial class SerialScheduler : ISchedulingEngine
         [LoggerMessage(Level = LogLevel.Error,
             Message = "失败策略为 StopOnAny，终止执行")]
         public static partial void StopOnAny(ILogger logger);
+
+        [LoggerMessage(Level = LogLevel.Critical,
+            Message = "方案执行因未受控异常而终止")]
+        public static partial void PlanExecutionAborted(ILogger logger, Exception ex);
     }
 }

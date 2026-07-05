@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Reflection;
 using System.Runtime.Loader;
 using Microsoft.Extensions.Logging;
@@ -11,6 +12,7 @@ public sealed class PluginManager : IPluginManager
     private readonly ILogger<PluginManager> _logger;
     private readonly List<PluginLoadContext> _contexts = [];
     private readonly object _contextsLock = new();
+    private readonly ConcurrentDictionary<string, List<string>> _pluginOperators = new();
 
     public PluginManager(IOperatorPool pool, ILogger<PluginManager> logger)
     {
@@ -32,17 +34,28 @@ public sealed class PluginManager : IPluginManager
         var assembly = context.LoadFromAssemblyPath(fullPath);
         var operators = new List<IOperator>();
 
+        var operatorIds = new List<string>();
+
         foreach (var type in assembly.GetExportedTypes())
         {
             if (!typeof(IOperator).IsAssignableFrom(type) || type.IsAbstract)
                 continue;
 
-            if (Activator.CreateInstance(type) is IOperator op)
+            try
             {
-                _pool.Register(op);
-                operators.Add(op);
-                _logger.LogInformation("Registered operator: {OperatorId} ({Name}) from plugin {Plugin}",
-                    op.Metadata.Id, op.Metadata.Name, Path.GetFileName(fullPath));
+                if (Activator.CreateInstance(type) is IOperator op)
+                {
+                    _pool.Register(op);
+                    operators.Add(op);
+                    operatorIds.Add(op.Metadata.Id);
+                    _logger.LogInformation("Registered operator: {OperatorId} ({Name}) from plugin {Plugin}",
+                        op.Metadata.Id, op.Metadata.Name, Path.GetFileName(fullPath));
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to instantiate operator type {TypeName} from plugin {Plugin}",
+                    type.FullName, Path.GetFileName(fullPath));
             }
         }
 
@@ -50,6 +63,9 @@ public sealed class PluginManager : IPluginManager
         {
             _contexts.Add(context);
         }
+
+        var pluginId = Path.GetFileNameWithoutExtension(fullPath);
+        _pluginOperators[pluginId] = operatorIds;
 
         if (operators.Count == 0)
             _logger.LogWarning("No IOperator implementations found in: {Path}", fullPath);
@@ -73,6 +89,14 @@ public sealed class PluginManager : IPluginManager
 
         if (ctx is not null)
         {
+            if (_pluginOperators.TryRemove(pluginId, out var operatorIds))
+            {
+                foreach (var opId in operatorIds)
+                {
+                    _pool.Unregister(opId);
+                }
+            }
+
             ctx.Unload();
             _logger.LogInformation("Unloaded plugin: {PluginId}", pluginId);
         }

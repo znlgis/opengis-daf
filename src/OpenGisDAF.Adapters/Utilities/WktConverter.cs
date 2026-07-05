@@ -5,7 +5,7 @@ namespace OpenGisDAF.Adapters.Utilities;
 
 public static class WktConverter
 {
-    private static readonly WKTReader Reader = new();
+    private static readonly ThreadLocal<WKTReader> Reader = new(() => new WKTReader());
     private static readonly WKTWriter Writer = new();
 
     public static string ToWkt(Geometry geometry)
@@ -17,7 +17,7 @@ public static class WktConverter
     public static Geometry FromWkt(string wkt)
     {
         ArgumentNullException.ThrowIfNull(wkt);
-        return Reader.Read(wkt);
+        return Reader.Value!.Read(wkt);
     }
 
     public static bool TryParse(string wkt, out Geometry? geometry)
@@ -27,7 +27,7 @@ public static class WktConverter
 
         try
         {
-            geometry = Reader.Read(wkt);
+            geometry = Reader.Value!.Read(wkt);
             return true;
         }
         catch (ParseException)

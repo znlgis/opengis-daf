@@ -92,7 +92,6 @@ public sealed class BufferOperator : IOperator
 
         return new ValidationResult
         {
-            IsValid = errors.Count == 0,
             Errors = errors,
             Warnings = warnings
         };
@@ -135,14 +134,23 @@ public sealed class BufferOperator : IOperator
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                var srcWkt = WktConverter.ToWkt(feature.Geometry);
-                var bufferedWkt = GeometryUtil.BufferWkt(srcWkt, distance);
-                var bufferedGeom = WktConverter.FromWkt(bufferedWkt);
+                try
+                {
+                    var srcWkt = WktConverter.ToWkt(feature.Geometry);
+                    var bufferedWkt = GeometryUtil.BufferWkt(srcWkt, distance);
+                    var bufferedGeom = WktConverter.FromWkt(bufferedWkt);
 
-                results.Add(new ResultFeature(
-                    feature.Id,
-                    bufferedGeom,
-                    feature.Attributes));
+                    results.Add(new ResultFeature(
+                        feature.Id,
+                        bufferedGeom,
+                        feature.Attributes));
+                }
+                catch (Exception ex)
+                {
+                    context.Logger.LogWarning(ex,
+                        "[Buffer] 要素缓冲计算异常: feature={FeatureId}",
+                        feature.Id);
+                }
             }
 
             context.Logger.LogInformation(

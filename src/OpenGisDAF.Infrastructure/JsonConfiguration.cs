@@ -15,6 +15,7 @@ public static class JsonConfiguration
             PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
             PropertyNameCaseInsensitive = true,
             WriteIndented = true,
+            MaxDepth = 32,
             TypeInfoResolver = new DefaultJsonTypeInfoResolver(),
             Converters =
             {

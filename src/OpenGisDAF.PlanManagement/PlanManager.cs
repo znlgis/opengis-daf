@@ -154,7 +154,13 @@ public sealed class PlanManager : IPlanManager
 
         var plan = _serializer.Deserialize(json);
 
-        _logger?.LogDebug("Deserialized plan {PlanId}, creating", plan.Id);
+        _logger?.LogDebug("Deserialized plan {PlanId}, validating", plan.Id);
+
+        var validation = await _validator.ValidateAsync(plan, _operatorPool, cancellationToken);
+        if (!validation.IsValid)
+            throw new InvalidOperationException($"方案验证失败: {string.Join("; ", validation.Errors.Select(e => e.Message))}");
+
+        _logger?.LogDebug("Plan {PlanId} validated, creating", plan.Id);
 
         return await CreateAsync(plan, cancellationToken);
     }
@@ -187,7 +193,6 @@ public sealed class PlanManager : IPlanManager
 
             return new ValidationResult
             {
-                IsValid = false,
                 Errors = new[]
                 {
                     new ValidationError
@@ -200,7 +205,7 @@ public sealed class PlanManager : IPlanManager
             };
         }
 
-        return _validator.Validate(plan, _operatorPool);
+        return await _validator.ValidateAsync(plan, _operatorPool, cancellationToken);
     }
 
     private static string BumpPatchVersion(string version)

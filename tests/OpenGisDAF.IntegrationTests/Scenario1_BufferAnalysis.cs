@@ -43,7 +43,7 @@ public sealed class Scenario1_BufferAnalysis : IClassFixture<DafTestHost>
                     },
                     Output = new OutputBinding
                     {
-                        AdapterType = "geojson",
+                        AdapterType = OutputAdapterType.GeoJsonWriter,
                         TargetPath = outputPath
                     }
                 }

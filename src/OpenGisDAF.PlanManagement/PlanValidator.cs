@@ -9,7 +9,10 @@ public sealed partial class PlanValidator : IPlanValidator
     [GeneratedRegex(@"^\d+\.\d+\.\d+$")]
     private static partial Regex SemverRegex();
 
-    public ValidationResult Validate(AnalysisPlan plan, IOperatorPool? operatorPool = null)
+    public Task<ValidationResult> ValidateAsync(
+        AnalysisPlan plan,
+        IOperatorPool? operatorPool = null,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(plan);
 
@@ -23,12 +26,11 @@ public sealed partial class PlanValidator : IPlanValidator
             ValidateBusinessRules(plan, operatorPool, errors, warnings);
         }
 
-        return new ValidationResult
+        return Task.FromResult(new ValidationResult
         {
-            IsValid = errors.Count == 0,
             Errors = errors.AsReadOnly(),
             Warnings = warnings.AsReadOnly()
-        };
+        });
     }
 
     // ===== Phase A: Schema validation (rules 1-14, always run) =====
@@ -103,7 +105,7 @@ public sealed partial class PlanValidator : IPlanValidator
                                 $"Input '{inputKey}' of item at index {i} has null or empty SourceId.", loc));
 
                         // Rule 10: if BindingType == SubPlan, SourceId must exist in plan.SubPlans
-                        if (binding.Type == BindingType.SubPlan)
+                        if (binding.Type == BindingType.SubPlan && !string.IsNullOrWhiteSpace(binding.SourceId))
                         {
                             if (plan.SubPlans is null || plan.SubPlans.Count == 0 ||
                                 !plan.SubPlans.Any(sp => sp.Id == binding.SourceId))
@@ -134,6 +136,22 @@ public sealed partial class PlanValidator : IPlanValidator
         if (plan.ExecutionPolicy.EnablePartitioning && plan.ExecutionPolicy.PartitionCount < 1)
             errors.Add(NewError(ErrorCode.CfgSchemaInvalid,
                 $"Plan PartitionCount must be >= 1 when partitioning is enabled, got {plan.ExecutionPolicy.PartitionCount}.", null));
+
+        // Rule 14a: GlobalConcurrency.MaxGlobalParallelism >= 1 when enabled
+        if (plan.ExecutionPolicy.GlobalConcurrency is { Enabled: true } gc && gc.MaxGlobalParallelism < 1)
+            errors.Add(NewError(ErrorCode.CfgSchemaInvalid,
+                $"GlobalConcurrency.MaxGlobalParallelism must be >= 1 when enabled, got {gc.MaxGlobalParallelism}.", null));
+
+        // Rule 14b: RetryInterval must be positive when retries are configured without exponential backoff
+        if (plan.Items is not null)
+        {
+            foreach (var item in plan.Items)
+            {
+                if (item.ExecutionPolicy.MaxRetries > 0 && !item.ExecutionPolicy.ExponentialBackoff && item.ExecutionPolicy.RetryInterval <= TimeSpan.Zero)
+                    errors.Add(NewError(ErrorCode.CfgSchemaInvalid,
+                        $"Item '{item.Id}' has MaxRetries={item.ExecutionPolicy.MaxRetries} but RetryInterval must be > 0 when ExponentialBackoff is disabled.", $"item.{item.Id}"));
+            }
+        }
 
         // Rule 17: DAG cycle detection
         if (plan.Items is { Count: > 1 })
@@ -230,7 +248,7 @@ public sealed partial class PlanValidator : IPlanValidator
                 var cyclePath = new List<string>();
                 if (DfsCycle(item.Id, color, itemMap, cyclePath))
                 {
-                    cyclePath.Add(item.Id);
+                    cyclePath.Insert(0, item.Id);
                     errors.Add(NewError(ErrorCode.CfgDagCycle,
                         $"Dependency cycle detected: {string.Join(" → ", cyclePath)}.", $"item.{item.Id}"));
                     return; // Report first cycle only
@@ -317,7 +335,7 @@ public sealed partial class PlanValidator : IPlanValidator
             {
                 try
                 {
-                    if (!Regex.IsMatch(strVal, constraint.Pattern))
+                    if (!Regex.IsMatch(strVal, constraint.Pattern, RegexOptions.None, TimeSpan.FromMilliseconds(500)))
                         errors.Add(NewError(ErrorCode.CfgParamOutOfRange,
                             $"Parameter '{paramName}' of item '{item.Id}' value '{strVal}' does not match pattern '{constraint.Pattern}'.", $"item.{item.Id}"));
                 }
@@ -325,10 +343,15 @@ public sealed partial class PlanValidator : IPlanValidator
                 {
                     // Silently skip invalid regex patterns in constraints
                 }
+                catch (RegexMatchTimeoutException)
+                {
+                    warnings.Add(NewWarning(ErrorCode.CfgParamOutOfRange,
+                        $"Parameter '{paramName}' of item '{item.Id}' pattern validation timed out for value '{strVal}'.", $"item.{item.Id}"));
+                }
             }
 
             // AllowedValues validation
-            if (constraint.AllowedValues is { Length: > 0 })
+            if (constraint.AllowedValues is { Count: > 0 })
             {
                 var allowedStr = paramValue?.ToString();
                 if (allowedStr is not null && !constraint.AllowedValues.Contains(allowedStr))
@@ -354,7 +377,7 @@ public sealed partial class PlanValidator : IPlanValidator
             if (referencedItemIds.Contains(item.Id))
             {
                 var output = item.Output;
-                if (output is null || (!output.IsIntermediate && string.IsNullOrWhiteSpace(output.AdapterType)))
+                if (output is null || !output.IsIntermediate)
                 {
                     warnings.Add(NewWarning(ErrorCode.CfgSchemaInvalid,
                         $"Non-final item '{item.Id}' (referenced by other items) should have OutputBinding with IsIntermediate=true or a non-empty AdapterType.", $"item.{item.Id}"));

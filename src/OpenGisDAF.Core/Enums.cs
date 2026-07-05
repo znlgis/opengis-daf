@@ -15,3 +15,5 @@ public enum IssueSeverity { Error, Warning, Info }
 public enum LogGranularity { Plan, Item, Feature }
 
 public enum FailurePolicy { StopOnAny, ContinueIndependent }
+
+public enum OutputAdapterType { ConsoleWriter, GeoJsonWriter, ShapefileWriter, PostGISWriter, CsvWriter, GeoPackageWriter }

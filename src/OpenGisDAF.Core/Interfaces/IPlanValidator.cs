@@ -2,5 +2,5 @@ namespace OpenGisDAF.Core;
 
 public interface IPlanValidator
 {
-    ValidationResult Validate(AnalysisPlan plan, IOperatorPool? operatorPool = null);
+    Task<ValidationResult> ValidateAsync(AnalysisPlan plan, IOperatorPool? operatorPool = null, CancellationToken cancellationToken = default);
 }

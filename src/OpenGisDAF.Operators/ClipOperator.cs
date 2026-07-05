@@ -60,7 +60,6 @@ public sealed class ClipOperator : IOperator
 
         return new ValidationResult
         {
-            IsValid = errors.Count == 0,
             Errors = errors,
             Warnings = []
         };

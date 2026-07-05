@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
 using NetTopologySuite.Geometries;
 using OpenGIS.Utils.DataSource;
@@ -13,7 +14,7 @@ public sealed class GeoJsonFeatureSource : IFeatureSource
     private readonly string _geojsonPath;
     private readonly ILogger<GeoJsonFeatureSource>? _logger;
     private readonly object _loadLock = new();
-    private OguLayer? _layer;
+    private readonly ConcurrentDictionary<string, OguLayer> _layerCache = new();
     private Envelope? _cachedBoundingBox;
     private ISpatialReference? _cachedSpatialReference;
     private FeatureSourceMetadata? _cachedMetadata;
@@ -131,7 +132,7 @@ public sealed class GeoJsonFeatureSource : IFeatureSource
 
     public ValueTask DisposeAsync()
     {
-        _layer = null;
+        _layerCache.Clear();
         _cachedBoundingBox = null;
         _cachedSpatialReference = null;
         _cachedMetadata = null;
@@ -140,22 +141,25 @@ public sealed class GeoJsonFeatureSource : IFeatureSource
 
     private OguLayer GetLayer(string? filterExpression)
     {
-        if (_layer is not null) return _layer;
+        var cacheKey = filterExpression ?? string.Empty;
+
+        if (_layerCache.TryGetValue(cacheKey, out var cached)) return cached;
 
         lock (_loadLock)
         {
-            if (_layer is not null) return _layer;
+            if (_layerCache.TryGetValue(cacheKey, out cached)) return cached;
 
-            _logger?.LogDebug("Loading GeoJSON from {Path}", _geojsonPath);
-            _layer = OguLayerUtil.ReadLayer(
+            _logger?.LogDebug("Loading GeoJSON from {Path} with filter '{Filter}'", _geojsonPath, filterExpression);
+            var layer = OguLayerUtil.ReadLayer(
                 DataFormatType.GEOJSON,
                 _geojsonPath,
                 attributeFilter: filterExpression);
 
-            _logger?.LogInformation("Loaded {Count} features from {Path}",
-                _layer.Features.Count, _geojsonPath);
+            _logger?.LogInformation("Loaded {Count} features from {Path} with filter '{Filter}'",
+                layer.Features.Count, _geojsonPath, filterExpression);
 
-            return _layer;
+            _layerCache[cacheKey] = layer;
+            return layer;
         }
     }
 

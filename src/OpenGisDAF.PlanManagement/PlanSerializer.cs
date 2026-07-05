@@ -16,6 +16,7 @@ public sealed class PlanSerializer : IPlanSerializer
         {
             options.Converters.Add(new TimeSpanConverter());
             options.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
+            options.MaxDepth = 32;
         });
     }
 

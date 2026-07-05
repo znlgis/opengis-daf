@@ -46,7 +46,7 @@ public sealed class Scenario2_ClipAndCalculate : IClassFixture<DafTestHost>
                     },
                     Output = new OutputBinding
                     {
-                        AdapterType = "geojson",
+                        AdapterType = OutputAdapterType.GeoJsonWriter,
                         TargetPath = clipOutputPath
                     }
                 },
@@ -71,7 +71,7 @@ public sealed class Scenario2_ClipAndCalculate : IClassFixture<DafTestHost>
                     },
                     Output = new OutputBinding
                     {
-                        AdapterType = "geojson",
+                        AdapterType = OutputAdapterType.GeoJsonWriter,
                         TargetPath = calcOutputPath
                     }
                 }

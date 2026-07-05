@@ -16,7 +16,7 @@ public static class GeometryDegradation
             OgcGeometryType.CompoundCurve => DegradeCompoundCurve((Geometry)geometry, logger),
             OgcGeometryType.Curve => DegradeToLineString(geometry, logger),
 
-            // Surface / CurvePolygon → Polygon: extract exterior ring
+            // Surface / CurvePolygon → Polygon: extract exterior ring and holes
             OgcGeometryType.CurvePolygon => DegradeCurvePolygon((Geometry)geometry, logger),
             OgcGeometryType.Surface => DegradeSurface(geometry, logger),
 
@@ -57,24 +57,74 @@ public static class GeometryDegradation
 
     private static Geometry? DegradeCurvePolygon(Geometry cp, ILogger? logger)
     {
-        logger?.LogWarning("Degrading CurvePolygon to Polygon: extracting exterior boundary");
+        logger?.LogWarning("Degrading CurvePolygon to Polygon: extracting boundary rings");
         var factory = cp.Factory;
         if (factory is null) return null;
 
-        var shell = new LinearRing(cp.Coordinates);
-        return factory.CreatePolygon(shell);
+        // CurvePolygon is stored as a collection where sub-geometries represent rings
+        var numGeom = cp.NumGeometries;
+        if (numGeom > 0)
+        {
+            var rings = new List<LinearRing>();
+            for (int i = 0; i < numGeom; i++)
+            {
+                var ring = DegradeRing(cp.GetGeometryN(i), logger);
+                if (ring is not null)
+                    rings.Add(ring);
+            }
+
+            if (rings.Count == 0) return null;
+            var shell = rings[0];
+            var holes = rings.Skip(1).ToArray();
+            return factory.CreatePolygon(shell, holes);
+        }
+
+        // Fallback: concatenated coordinates (shell only, no holes)
+        var fallbackShell = new LinearRing(cp.Coordinates);
+        return factory.CreatePolygon(fallbackShell);
+    }
+
+    private static LinearRing? DegradeRing(Geometry ring, ILogger? logger)
+    {
+        if (ring is LinearRing lr) return lr;
+        if (ring is LineString ls) return new LinearRing(ls.Coordinates);
+
+        var degraded = Degrade(ring, logger);
+        if (degraded is LineString degradedLs)
+            return new LinearRing(degradedLs.Coordinates);
+
+        return null;
     }
 
     private static Geometry? DegradeSurface(Geometry surface, ILogger? logger)
     {
-        logger?.LogWarning("Degrading Surface to Polygon: extracting exterior boundary");
+        logger?.LogWarning("Degrading Surface to Polygon: extracting boundary rings");
         if (surface is Polygon polygon) return polygon; // already polygon
 
         var factory = surface.Factory;
         if (factory is null) return null;
 
-        var shell = new LinearRing(surface.Coordinates);
-        return factory.CreatePolygon(shell);
+        // Surface may have sub-geometries for rings (exterior + holes)
+        var numGeom = surface.NumGeometries;
+        if (numGeom > 0)
+        {
+            var rings = new List<LinearRing>();
+            for (int i = 0; i < numGeom; i++)
+            {
+                var ring = DegradeRing(surface.GetGeometryN(i), logger);
+                if (ring is not null)
+                    rings.Add(ring);
+            }
+
+            if (rings.Count == 0) return null;
+            var shell = rings[0];
+            var holes = rings.Skip(1).ToArray();
+            return factory.CreatePolygon(shell, holes);
+        }
+
+        // Fallback: concatenated coordinates (shell only)
+        var fallbackShell = new LinearRing(surface.Coordinates);
+        return factory.CreatePolygon(fallbackShell);
     }
 
     private static Geometry? DegradeMultiSurface(Geometry ms, ILogger? logger)
@@ -90,9 +140,18 @@ public static class GeometryDegradation
         {
             var geom = ms.GetGeometryN(i);
             if (geom is Polygon p)
+            {
                 polygons.Add(p);
+            }
             else
-                polygons.Add(factory.CreatePolygon(new LinearRing(geom.Coordinates)));
+            {
+                // Degrade each sub-surface to handle holes etc.
+                var degraded = Degrade(geom, logger);
+                if (degraded is Polygon dp)
+                    polygons.Add(dp);
+                else
+                    polygons.Add(factory.CreatePolygon(new LinearRing(geom.Coordinates)));
+            }
         }
         return factory.CreateMultiPolygon(polygons.ToArray());
     }
@@ -116,8 +175,11 @@ public static class GeometryDegradation
                 double t = j / (double)segmentsPerArc;
                 result.Add(InterpolateCircularPoint(p0, p1, p2, t));
             }
+
+            // Add endpoint of the last arc (avoids post-loop duplication for 5+ control points)
+            if (i == arcCoords.Length - 3)
+                result.Add(p2);
         }
-        result.Add(arcCoords[^1]);
 
         return result.ToArray();
     }
@@ -143,6 +205,10 @@ public static class GeometryDegradation
         double dot = dx1 * dx2 + dy1 * dy2;
         double norm1 = Math.Sqrt(dx1 * dx1 + dy1 * dy1);
         double norm2 = Math.Sqrt(dx2 * dx2 + dy2 * dy2);
+
+        if (norm1 < 1e-10 || norm2 < 1e-10)
+            return 0.0;
+
         return Math.Acos(Math.Clamp(dot / (norm1 * norm2), -1.0, 1.0));
     }
 }

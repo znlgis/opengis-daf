@@ -9,8 +9,6 @@ public static class ServiceCollectionExtensions
     {
         ArgumentNullException.ThrowIfNull(services);
 
-        services.AddSingleton<DagBuilder>();
-        services.AddSingleton<TopologicalSorter>();
         services.AddSingleton(new GlobalConcurrencyController(maxGlobalConcurrency));
         services.AddSingleton<ISchedulingEngine, SerialScheduler>();
 

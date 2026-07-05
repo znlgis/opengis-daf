@@ -120,7 +120,6 @@ public sealed class FieldCalculator : IOperator
 
         return new ValidationResult
         {
-            IsValid = errors.Count == 0,
             Errors = errors,
             Warnings = warnings
         };
@@ -157,7 +156,20 @@ public sealed class FieldCalculator : IOperator
             await foreach (var feature in source.GetFeaturesAsync(cancellationToken: cancellationToken))
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                var computed = ComputeExpression(expression, feature.Attributes, fieldRefs, fieldType);
+
+                object? computed;
+                try
+                {
+                    computed = ComputeExpression(expression, feature.Attributes, fieldRefs, fieldType);
+                }
+                catch (Exception ex)
+                {
+                    context.Logger.LogWarning(ex,
+                        "[FieldCalculator] 表达式求值异常: feature={FeatureId}, expr={Expr}",
+                        feature.Id, expression);
+                    computed = null;
+                }
+
                 var attrs = new Dictionary<string, object?>(feature.Attributes) { [targetField] = computed };
                 results.Add(new Feature(feature.Id, feature.Geometry, attrs));
                 count++;

@@ -83,7 +83,7 @@ public sealed class DafApplication
 
         var validator = _services.GetRequiredService<IPlanValidator>();
         var operatorPool = _services.GetRequiredService<IOperatorPool>();
-        var validation = validator.Validate(plan, operatorPool);
+        var validation = await validator.ValidateAsync(plan, operatorPool);
         if (!validation.IsValid)
         {
             Console.Error.WriteLine("方案校验失败:");
@@ -167,7 +167,7 @@ public sealed class DafApplication
 
         var validator = _services.GetRequiredService<IPlanValidator>();
         var operatorPool = _services.GetRequiredService<IOperatorPool>();
-        var validation = validator.Validate(plan, operatorPool);
+        var validation = await validator.ValidateAsync(plan, operatorPool);
 
         Console.WriteLine($"方案 '{plan.Name}' 校验结果: {(validation.IsValid ? "通过" : "失败")}");
         Console.WriteLine($"  错误: {validation.Errors.Count}");
@@ -210,7 +210,9 @@ public sealed class DafApplication
         }
 
         var operators = category is not null
-            ? pool.GetByCategory(category)
+            ? (pool.GetAllGroupedByCategory().TryGetValue(category, out var grouped)
+                ? grouped
+                : [])
             : pool.GetAll();
 
         Console.WriteLine($"已注册算子 ({operators.Count}):");

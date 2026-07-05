@@ -25,7 +25,7 @@ internal sealed class OguFeatureWrapper : IFeature
             if (_cachedGeometry is not null) return _cachedGeometry;
             if (_feature.Wkt is null)
             {
-                _cachedGeometry = GeometryFactory.Default.CreatePoint(new Coordinate(0, 0));
+                _cachedGeometry = GeometryFactory.Default.CreateEmpty(Dimension.False);
                 return _cachedGeometry;
             }
 

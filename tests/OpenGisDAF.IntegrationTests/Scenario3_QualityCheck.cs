@@ -41,7 +41,7 @@ public sealed class Scenario3_QualityCheck : IClassFixture<DafTestHost>
                     },
                     Output = new OutputBinding
                     {
-                        AdapterType = "console"
+                        AdapterType = OutputAdapterType.ConsoleWriter
                     },
                     ExecutionPolicy = new ItemExecutionPolicy
                     {

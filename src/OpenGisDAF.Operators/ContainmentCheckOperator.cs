@@ -85,7 +85,6 @@ public sealed class ContainmentCheckOperator : IOperator
 
         return new ValidationResult
         {
-            IsValid = errors.Count == 0,
             Errors = errors,
             Warnings = warnings
         };
@@ -337,8 +336,8 @@ public sealed class ContainmentCheckOperator : IOperator
         string issueType, ExecutionContext context)
     {
         var description = issueType == "contains"
-            ? $"要素 {src.Id} 不包含要素 {tgt.Id}"
-            : $"要素 {src.Id} 不在要素 {tgt.Id} 内部";
+            ? $"要素 {src.Id} 包含要素 {tgt.Id}"
+            : $"要素 {src.Id} 位于要素 {tgt.Id} 内部";
 
         return new SimpleFeature(
             Id: Guid.NewGuid().ToString(),

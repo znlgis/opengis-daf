@@ -57,11 +57,14 @@ public sealed class PostgisFeatureSource : IFeatureSource
         string? filterExpression = null,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
+        // Always ensure base layer is loaded first so metadata (BoundingBox,
+        // SpatialReference, FeatureCount) is available even for filtered queries.
+        await EnsureBaseLayerLoadedAsync(cancellationToken);
+
         OguLayer layer;
 
         if (boundingBox is null && string.IsNullOrWhiteSpace(filterExpression))
         {
-            await EnsureBaseLayerLoadedAsync(cancellationToken);
             layer = _baseLayer!;
         }
         else

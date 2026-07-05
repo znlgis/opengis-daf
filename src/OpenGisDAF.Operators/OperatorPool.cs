@@ -20,12 +20,30 @@ public sealed class OperatorPool : IOperatorPool
             (_, list) => { list.Add(op.Metadata.Id); return list; });
     }
 
+    public bool Unregister(string operatorId)
+    {
+        if (!_operators.TryRemove(operatorId, out var op))
+            return false;
+
+        var category = op.Metadata.Category;
+        if (_categoryIndex.TryGetValue(category, out var list))
+        {
+            list.Remove(operatorId);
+            if (list.Count == 0)
+                _categoryIndex.TryRemove(category, out _);
+        }
+
+        return true;
+    }
+
     public IOperator? GetById(string operatorId) =>
         _operators.TryGetValue(operatorId, out var op) ? op : null;
 
     public IReadOnlyList<IOperator> GetByCategory(string category) =>
         _categoryIndex.TryGetValue(category, out var ids)
-            ? ids.Select(id => _operators[id]).ToList()
+            ? ids.Select(id => _operators.TryGetValue(id, out var op) ? op : null!)
+                .Where(op => op is not null)
+                .ToList()!
             : [];
 
     public IReadOnlyList<IOperator> Search(string keyword)
@@ -42,8 +60,11 @@ public sealed class OperatorPool : IOperatorPool
 
     public IReadOnlyList<IOperator> GetAll() => _operators.Values.ToList();
 
-    public IReadOnlyDictionary<string, IReadOnlyList<IOperator>> GetByCategory()
+    public IReadOnlyDictionary<string, IReadOnlyList<IOperator>> GetAllGroupedByCategory()
         => _categoryIndex.ToDictionary(
             kvp => kvp.Key,
-            kvp => (IReadOnlyList<IOperator>)kvp.Value.Select(id => _operators[id]).ToList());
+            kvp => (IReadOnlyList<IOperator>)kvp.Value
+                .Select(id => _operators.TryGetValue(id, out var op) ? op : null!)
+                .Where(op => op is not null)
+                .ToList()!);
 }

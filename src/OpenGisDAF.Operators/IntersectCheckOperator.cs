@@ -82,7 +82,6 @@ public sealed class IntersectCheckOperator : IOperator
 
         return new ValidationResult
         {
-            IsValid = errors.Count == 0,
             Errors = errors,
             Warnings = warnings
         };
@@ -220,18 +219,23 @@ public sealed class IntersectCheckOperator : IOperator
         long processed = 0;
         long hits = 0;
 
-        foreach (var src in sourceFeatures)
+        var sourceWkts = sourceFeatures.Select(f => WktConverter.ToWkt(f.Geometry)).ToList();
+        var targetWkts = targetFeatures.Select(f => WktConverter.ToWkt(f.Geometry)).ToList();
+
+        for (int i = 0; i < sourceFeatures.Count; i++)
         {
             cancellationToken.ThrowIfCancellationRequested();
             processed++;
 
-            var srcWkt = WktConverter.ToWkt(src.Geometry);
+            var src = sourceFeatures[i];
+            var srcWkt = sourceWkts[i];
 
-            foreach (var tgt in targetFeatures)
+            for (int j = 0; j < targetFeatures.Count; j++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                var tgtWkt = WktConverter.ToWkt(tgt.Geometry);
+                var tgt = targetFeatures[j];
+                var tgtWkt = targetWkts[j];
 
                 bool intersects;
                 try
@@ -277,19 +281,21 @@ public sealed class IntersectCheckOperator : IOperator
         var results = new List<IFeature>();
         long hits = 0;
 
+        var wkts = features.Select(f => WktConverter.ToWkt(f.Geometry)).ToList();
+
         for (int i = 0; i < features.Count; i++)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
             var src = features[i];
-            var srcWkt = WktConverter.ToWkt(src.Geometry);
+            var srcWkt = wkts[i];
 
             for (int j = i + 1; j < features.Count; j++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
                 var tgt = features[j];
-                var tgtWkt = WktConverter.ToWkt(tgt.Geometry);
+                var tgtWkt = wkts[j];
 
                 bool intersects;
                 try

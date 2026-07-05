@@ -74,45 +74,63 @@ public sealed partial class ExecutionEngine : IExecutionEngine
         var totalElapsed = TimeSpan.Zero;
         var lastResult = (ExecutionResult?)null;
 
-        for (var attempt = 0; attempt <= policy.MaxRetries; attempt++)
+        try
         {
-            if (attempt > 0)
+            for (var attempt = 0; attempt <= policy.MaxRetries; attempt++)
             {
-                var delay = policy.ExponentialBackoff
-                    ? TimeSpan.FromMilliseconds(policy.RetryInterval.TotalMilliseconds * Math.Pow(2, attempt - 1))
-                    : policy.RetryInterval;
+                if (attempt > 0)
+                {
+                    var delay = policy.ExponentialBackoff
+                        ? TimeSpan.FromMilliseconds(policy.RetryInterval.TotalMilliseconds * Math.Pow(2, attempt - 1))
+                        : policy.RetryInterval;
 
-                Log.RetryAttempt(_logger, attempt, policy.MaxRetries, (long)delay.TotalMilliseconds);
+                    Log.RetryAttempt(_logger, attempt, policy.MaxRetries, (long)delay.TotalMilliseconds);
 
-                await Task.Delay(delay, cancellationToken);
+                    await Task.Delay(delay, cancellationToken);
+                }
+
+                var parameters = new Dictionary<string, object?>(item.Parameters);
+                if (policy.QcMode)
+                    parameters["_qc_mode"] = true;
+
+                var result = await TimeoutController.ExecuteWithTimeoutAsync(
+                    ct => op.ExecuteAsync(resolvedInputs, parameters, context, ct),
+                    policy.Timeout,
+                    cancellationToken);
+
+                totalElapsed += result.Elapsed;
+
+                if (result.Status == ExecutionStatus.Success)
+                {
+                    result = result with { Elapsed = totalElapsed };
+                    return result;
+                }
+
+                if (result.ErrorCode is not null && !result.ErrorCode.StartsWith("ERR_RT_", StringComparison.Ordinal))
+                {
+                    Log.NonRuntimeErrorStopRetry(_logger, result.ErrorCode);
+                    result = result with { Elapsed = totalElapsed };
+                    return result;
+                }
+
+                lastResult = result;
+                Log.ExecutionFailedRetrying(_logger, result.ErrorCode);
             }
-
-            var parameters = new Dictionary<string, object?>(item.Parameters);
-            if (policy.QcMode)
-                parameters["_qc_mode"] = true;
-
-            var result = await TimeoutController.ExecuteWithTimeoutAsync(
-                ct => op.ExecuteAsync(resolvedInputs, parameters, context, ct),
-                policy.Timeout,
-                cancellationToken);
-
-            totalElapsed += result.Elapsed;
-
-            if (result.Status == ExecutionStatus.Success)
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            Log.OperatorExecutionError(_logger, ex);
+            return new ExecutionResult
             {
-                result = result with { Elapsed = totalElapsed };
-                return result;
-            }
-
-            if (result.ErrorCode is not null && !result.ErrorCode.StartsWith("ERR_RT_", StringComparison.Ordinal))
-            {
-                Log.NonRuntimeErrorStopRetry(_logger, result.ErrorCode);
-                result = result with { Elapsed = totalElapsed };
-                return result;
-            }
-
-            lastResult = result;
-            Log.ExecutionFailedRetrying(_logger, result.ErrorCode);
+                Status = ExecutionStatus.Failed,
+                ErrorCode = ErrorCode.RtUnexpected,
+                ErrorMessage = $"算子异常: {ex.Message}",
+                Elapsed = totalElapsed
+            };
         }
 
         return lastResult! with { Elapsed = totalElapsed };
@@ -131,5 +149,9 @@ public sealed partial class ExecutionEngine : IExecutionEngine
         [LoggerMessage(Level = LogLevel.Warning,
             Message = "执行失败（{ErrorCode}），准备重试")]
         public static partial void ExecutionFailedRetrying(ILogger logger, string? errorCode);
+
+        [LoggerMessage(Level = LogLevel.Error,
+            Message = "算子执行异常")]
+        public static partial void OperatorExecutionError(ILogger logger, Exception ex);
     }
 }

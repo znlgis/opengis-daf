@@ -21,6 +21,7 @@ public sealed class GlobalConcurrencyController : IDisposable
 
     public void Dispose()
     {
-        _semaphore.Dispose();
+        try { _semaphore.Dispose(); }
+        catch (ObjectDisposedException) { /* 已释放 */ }
     }
 }

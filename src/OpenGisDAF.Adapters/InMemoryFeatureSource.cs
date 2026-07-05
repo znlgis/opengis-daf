@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using NetTopologySuite.Geometries;
 using OpenGisDAF.Adapters.Utilities;
 using OpenGisDAF.Core;
@@ -8,11 +9,13 @@ public sealed class InMemoryFeatureSource : IFeatureSource
 {
     private readonly List<IFeature> _features;
     private readonly FeatureSourceMetadata _metadata;
+    private readonly ILogger<InMemoryFeatureSource>? _logger;
     private Envelope? _cachedBoundingBox;
 
-    public InMemoryFeatureSource(IEnumerable<IFeature> features, string? sourceId = null)
+    public InMemoryFeatureSource(IEnumerable<IFeature> features, string? sourceId = null, ILogger<InMemoryFeatureSource>? logger = null)
     {
         _features = features.ToList();
+        _logger = logger;
         _metadata = new FeatureSourceMetadata
         {
             SourceId = sourceId ?? $"memory_{Guid.NewGuid():N}",
@@ -34,6 +37,15 @@ public sealed class InMemoryFeatureSource : IFeatureSource
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         await Task.Yield();
+
+        if (!string.IsNullOrWhiteSpace(filterExpression))
+        {
+            _logger?.LogWarning(
+                "InMemoryFeatureSource does not support attribute filtering. " +
+                "The filter expression '{FilterExpression}' will be ignored.",
+                filterExpression);
+        }
+
         foreach (var feature in _features)
         {
             cancellationToken.ThrowIfCancellationRequested();
