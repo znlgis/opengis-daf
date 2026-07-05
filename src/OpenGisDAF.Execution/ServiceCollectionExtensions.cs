@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using OpenGisDAF.Adapters.Utilities;
 using OpenGisDAF.Core;
 
 namespace OpenGisDAF.Execution;
@@ -10,6 +11,7 @@ public static class ServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
 
         services.AddSingleton<IResultCache, ResultCache>();
+        services.AddSingleton<IConnectionEncryption, DpapiConnectionEncryption>();
         services.AddSingleton<SourceFactory>();
         services.AddSingleton<SinkFactory>();
         services.AddSingleton<IExecutionEngine, ExecutionEngine>();

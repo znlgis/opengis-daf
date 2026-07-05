@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.Json.Serialization.Metadata;
 
 namespace OpenGisDAF.Infrastructure;
 
@@ -14,6 +15,7 @@ public static class JsonConfiguration
             PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
             PropertyNameCaseInsensitive = true,
             WriteIndented = true,
+            TypeInfoResolver = new DefaultJsonTypeInfoResolver(),
             Converters =
             {
                 new JsonStringEnumConverter(JsonNamingPolicy.CamelCase)
