@@ -6,6 +6,8 @@ using OpenGisDAF.Infrastructure;
 using OpenGisDAF.Operators;
 using OpenGisDAF.PlanManagement;
 using OpenGisDAF.Scheduling;
+using Serilog;
+using System.Globalization;
 
 namespace OpenGisDAF.Cli;
 
@@ -19,7 +21,6 @@ public sealed class DafApplication
 
         builder.ConfigureServices(services =>
         {
-            services.AddLogging();
             services.AddSingleton(TimeProvider.System);
             services.AddSingleton(JsonConfiguration.Create());
 
@@ -29,10 +30,10 @@ public sealed class DafApplication
             services.AddScheduling();
         });
 
-        builder.ConfigureLogging(logging =>
+        builder.ConfigureLogging(config =>
         {
-            logging.SetMinimumLevel(LogLevel.Information);
-            logging.AddConsole();
+            config.MinimumLevel.Information()
+                  .WriteTo.Console(formatProvider: CultureInfo.InvariantCulture);
         });
 
         _services = builder.Build();

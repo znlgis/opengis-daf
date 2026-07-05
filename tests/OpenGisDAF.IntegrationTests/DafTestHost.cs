@@ -1,11 +1,12 @@
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
 using OpenGisDAF.Core;
 using OpenGisDAF.Execution;
 using OpenGisDAF.Infrastructure;
 using OpenGisDAF.Operators;
 using OpenGisDAF.PlanManagement;
 using OpenGisDAF.Scheduling;
+using Serilog;
+using System.Globalization;
 
 namespace OpenGisDAF.IntegrationTests;
 
@@ -26,7 +27,6 @@ public sealed class DafTestHost : IDisposable
 
         builder.ConfigureServices(services =>
         {
-            services.AddLogging();
             services.AddSingleton(TimeProvider.System);
             services.AddSingleton(JsonConfiguration.Create());
             services.AddPlanManagement(TempDir);
@@ -35,10 +35,10 @@ public sealed class DafTestHost : IDisposable
             services.AddScheduling();
         });
 
-        builder.ConfigureLogging(logging =>
+        builder.ConfigureLogging(config =>
         {
-            logging.SetMinimumLevel(LogLevel.Warning);
-            logging.AddConsole();
+            config.MinimumLevel.Warning()
+                  .WriteTo.Console(formatProvider: CultureInfo.InvariantCulture);
         });
 
         Services = builder.Build();

@@ -1,12 +1,13 @@
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
+using Serilog;
+using System.Globalization;
 
 namespace OpenGisDAF.Infrastructure;
 
 public class HostBuilder
 {
     private readonly IServiceCollection _services = new ServiceCollection();
-    private Action<ILoggingBuilder>? _loggingConfig;
+    private Action<LoggerConfiguration>? _loggingConfig;
 
     public HostBuilder ConfigureServices(Action<IServiceCollection> configure)
     {
@@ -14,7 +15,7 @@ public class HostBuilder
         return this;
     }
 
-    public HostBuilder ConfigureLogging(Action<ILoggingBuilder> configure)
+    public HostBuilder ConfigureLogging(Action<LoggerConfiguration> configure)
     {
         _loggingConfig = configure;
         return this;
@@ -22,10 +23,14 @@ public class HostBuilder
 
     public IServiceProvider Build()
     {
-        _services.AddLogging(builder =>
-        {
-            _loggingConfig?.Invoke(builder);
-        });
+        var loggerConfig = new LoggerConfiguration()
+            .MinimumLevel.Information()
+            .WriteTo.Console(formatProvider: CultureInfo.InvariantCulture);
+
+        _loggingConfig?.Invoke(loggerConfig);
+
+        Log.Logger = loggerConfig.CreateLogger();
+        _services.AddLogging(builder => builder.AddSerilog(dispose: true));
 
         return _services.BuildServiceProvider(new ServiceProviderOptions
         {
