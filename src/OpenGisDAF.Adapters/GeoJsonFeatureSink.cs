@@ -104,25 +104,33 @@ public sealed class GeoJsonFeatureSink : IFeatureSink
         };
 
         var schema = _schema!;
-        foreach (var fieldDef in schema.ProducedFields)
-        {
-            if (fieldDef.Type == FieldType.Geometry) continue;
-
-            layer.Fields.Add(new OguField
-            {
-                Name = fieldDef.Name,
-                DataType = MapToFieldDataType(fieldDef.Type),
-                IsNullable = !fieldDef.Required
-            });
-        }
 
         if (schema.ProducedGeometryType is not null)
             layer.GeometryType = MapToOguGeometryType(schema.ProducedGeometryType.Value);
 
-        var fieldNames = schema.ProducedFields
+        var declaredFieldNames = schema.ProducedFields
             .Where(f => f.Type != FieldType.Geometry)
             .Select(f => f.Name)
             .ToHashSet(StringComparer.Ordinal);
+
+        var hasDeclaredFields = declaredFieldNames.Count > 0;
+
+        if (hasDeclaredFields)
+        {
+            foreach (var fieldDef in schema.ProducedFields)
+            {
+                if (fieldDef.Type == FieldType.Geometry) continue;
+
+                layer.Fields.Add(new OguField
+                {
+                    Name = fieldDef.Name,
+                    DataType = MapToFieldDataType(fieldDef.Type),
+                    IsNullable = !fieldDef.Required
+                });
+            }
+        }
+
+        var attrNames = new HashSet<string>(StringComparer.Ordinal);
 
         int fid = 0;
         foreach (var feature in _features)
@@ -135,11 +143,25 @@ public sealed class GeoJsonFeatureSink : IFeatureSink
 
             foreach (var attr in feature.Attributes)
             {
-                if (!fieldNames.Contains(attr.Key)) continue;
+                if (hasDeclaredFields && !declaredFieldNames.Contains(attr.Key)) continue;
                 oguFeature.Attributes[attr.Key] = new OguFieldValue(attr.Value);
+                attrNames.Add(attr.Key);
             }
 
             layer.Features.Add(oguFeature);
+        }
+
+        if (!hasDeclaredFields)
+        {
+            foreach (var name in attrNames)
+            {
+                layer.Fields.Add(new OguField
+                {
+                    Name = name,
+                    DataType = FieldDataType.STRING,
+                    IsNullable = true
+                });
+            }
         }
 
         return layer;

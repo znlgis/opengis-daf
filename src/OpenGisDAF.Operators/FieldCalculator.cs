@@ -218,9 +218,17 @@ public sealed class FieldCalculator : IOperator
         HashSet<string> fieldRefs,
         FieldType targetType)
     {
-        // String literal: "hello"
+        // String literal: "hello" (resolve {field} references inside)
         if (expression.Length >= 2 && expression[0] == '"' && expression[^1] == '"')
-            return SafeCoerceTo(expression[1..^1], targetType);
+        {
+            var inner = expression[1..^1];
+            foreach (var refName in fieldRefs)
+            {
+                var raw = attrs.TryGetValue(refName, out var val) ? val : null;
+                inner = inner.Replace($"{{{refName}}}", FormatValue(raw));
+            }
+            return SafeCoerceTo(inner, targetType);
+        }
 
         var trimmed = expression.Trim();
 

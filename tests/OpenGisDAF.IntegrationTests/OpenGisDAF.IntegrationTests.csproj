@@ -35,7 +35,6 @@
     <ProjectReference Include="..\..\src\OpenGisDAF.Scheduling\OpenGisDAF.Scheduling.csproj" />
     <ProjectReference Include="..\..\src\OpenGisDAF.PlanManagement\OpenGisDAF.PlanManagement.csproj" />
     <ProjectReference Include="..\..\src\OpenGisDAF.Infrastructure\OpenGisDAF.Infrastructure.csproj" />
-    <ProjectReference Include="..\..\src\OpenGisDAF.Cli\OpenGisDAF.Cli.csproj" />
   </ItemGroup>
 
   <ItemGroup>
