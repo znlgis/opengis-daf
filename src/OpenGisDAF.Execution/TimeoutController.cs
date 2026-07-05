@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using OpenGisDAF.Core;
 
 namespace OpenGisDAF.Execution;
@@ -9,13 +10,15 @@ public static class TimeoutController
         TimeSpan timeout,
         CancellationToken externalCancellationToken = default)
     {
+        var sw = Stopwatch.StartNew();
         using var timeoutCts = new CancellationTokenSource(timeout);
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
             timeoutCts.Token, externalCancellationToken);
 
         try
         {
-            return await action(linkedCts.Token);
+            var result = await action(linkedCts.Token);
+            return result;
         }
         catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !externalCancellationToken.IsCancellationRequested)
         {
@@ -24,7 +27,7 @@ public static class TimeoutController
                 Status = ExecutionStatus.Failed,
                 ErrorCode = ErrorCode.RtTimeout,
                 ErrorMessage = $"执行超时（{timeout.TotalSeconds:F0}s）",
-                Elapsed = timeout
+                Elapsed = sw.Elapsed
             };
         }
         catch (OperationCanceledException) when (externalCancellationToken.IsCancellationRequested)
@@ -34,7 +37,7 @@ public static class TimeoutController
                 Status = ExecutionStatus.Canceled,
                 ErrorCode = ErrorCode.RtCancelled,
                 ErrorMessage = "执行已取消（外部取消信号）",
-                Elapsed = TimeSpan.Zero
+                Elapsed = sw.Elapsed
             };
         }
     }

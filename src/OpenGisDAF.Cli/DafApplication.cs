@@ -140,10 +140,12 @@ public sealed class DafApplication
         var hasQcMode = plan.Items.Any(i => i.ExecutionPolicy.QcMode);
         if (!hasQcMode) return;
 
-        var issuesByItem = new Dictionary<string, List<IssueRecord>>();
+        var issuesByItem = stats.Issues
+            .GroupBy(i => i.ItemId)
+            .ToDictionary(g => g.Key, g => g.ToList());
 
         var report = QualityReportGenerator.Generate(
-            [], issuesByItem, plan, Guid.NewGuid().ToString("N"));
+            stats.Issues, issuesByItem, plan, Guid.NewGuid().ToString("N"));
 
         await QualityReportGenerator.SaveAsync(report, reportPath);
         Console.WriteLine($"质检报告已保存: {reportPath}");

@@ -8,4 +8,5 @@ public sealed record PlanExecutionStatistics
     public IReadOnlyList<PerItemStats> ItemStats { get; init; } = [];
     public QcStatistics? QcStats { get; init; }
     public ResourceUsage? ResourceUsage { get; init; }
+    public IReadOnlyList<IssueRecord> Issues { get; init; } = [];
 }

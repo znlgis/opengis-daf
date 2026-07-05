@@ -45,6 +45,7 @@ public sealed class QualityCalculator
             stats.Add(new RuleLevelStats
             {
                 RuleId = itemId,
+                // P1: TotalChecked reflects issues found per rule; feature-level checked counts require per-operator tracking.
                 TotalChecked = issues.Count,
                 Passed = issues.Count(i => i.Severity != IssueSeverity.Error),
                 Failed = issues.Count(i => i.Severity == IssueSeverity.Error),

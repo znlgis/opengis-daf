@@ -37,14 +37,4 @@ public sealed class SourceFactory
     {
         return new GeoJsonFeatureSource(path);
     }
-
-#pragma warning disable CA1822 // 成员不访问实例数据 — 保留实例方法签名以供未来扩展
-    public void DisposeSource(IFeatureSource source)
-    {
-#pragma warning disable CA2012 // 在此 fire-and-forget 场景中故意不等待 ValueTask
-        if (source is IAsyncDisposable ad)
-            _ = ad.DisposeAsync();
-#pragma warning restore CA2012
-    }
-#pragma warning restore CA1822
 }

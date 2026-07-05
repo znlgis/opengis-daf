@@ -16,10 +16,6 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<SinkFactory>();
         services.AddSingleton<IExecutionEngine, ExecutionEngine>();
 
-        services.AddSingleton<QcResultCollector>();
-        services.AddSingleton<QualityCalculator>();
-        services.AddSingleton<QualityReportGenerator>();
-
         return services;
     }
 }

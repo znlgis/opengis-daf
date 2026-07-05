@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using OpenGisDAF.Core;
 using ExecutionContext = OpenGisDAF.Core.ExecutionContext;

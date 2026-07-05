@@ -57,7 +57,7 @@ public sealed partial class SerialScheduler : ISchedulingEngine
         }
 
         // Step 2: Topological sort
-        var sortResult = TopologicalSorter.Sort(plan.Items);
+        var sortResult = TopologicalSorter.SortFromDag(plan.Items, dagResult.Adjacency!);
         if (!sortResult.IsComplete)
         {
             Log.SortIncomplete(_logger);
@@ -115,18 +115,37 @@ public sealed partial class SerialScheduler : ISchedulingEngine
                         Log.ItemExecutionFailed(
                             _logger, item.Id, result.ErrorCode ?? "UNKNOWN", result.ErrorMessage ?? "无错误信息");
 
-                        if (plan.ExecutionPolicy.FailurePolicy == FailurePolicy.StopOnAny)
+                    if (plan.ExecutionPolicy.FailurePolicy == FailurePolicy.StopOnAny)
+                    {
+                        Log.StopOnAny(_logger);
+                        itemStats.Add(new PerItemStats
                         {
-                            Log.StopOnAny(_logger);
+                            ItemId = item.Id,
+                            OperatorId = item.OperatorId,
+                            Elapsed = itemSw.Elapsed,
+                            FailedCount = 1
+                        });
+
+                        // Track skipped items
+                        var foundCurrent = false;
+                        foreach (var remaining in sortResult.OrderedItems)
+                        {
+                            if (!foundCurrent)
+                            {
+                                if (remaining.Id == item.Id)
+                                    foundCurrent = true;
+                                continue;
+                            }
                             itemStats.Add(new PerItemStats
                             {
-                                ItemId = item.Id,
-                                OperatorId = item.OperatorId,
-                                Elapsed = itemSw.Elapsed,
-                                FailedCount = 1
+                                ItemId = remaining.Id,
+                                OperatorId = remaining.OperatorId,
+                                Elapsed = TimeSpan.Zero,
+                                SkippedCount = 1
                             });
-                            break;
                         }
+                        break;
+                    }
                     }
 
                     itemStats.Add(new PerItemStats
@@ -175,7 +194,8 @@ public sealed partial class SerialScheduler : ISchedulingEngine
             EndTime = endTime,
             TotalElapsed = planSw.Elapsed,
             ItemStats = itemStats,
-            QcStats = qcStats
+            QcStats = qcStats,
+            Issues = allIssues
         };
     }
 
@@ -191,6 +211,8 @@ public sealed partial class SerialScheduler : ISchedulingEngine
             switch (binding.Type)
             {
                 case BindingType.External:
+                    if (externalSources.TryGetValue(key, out var existing))
+                        await existing.DisposeAsync();
                     var source = _sourceFactory.CreateSource(binding);
                     externalSources[key] = source;
                     resolved[key] = source;
@@ -232,16 +254,22 @@ public sealed partial class SerialScheduler : ISchedulingEngine
             if (value is IFeatureSource featureSource)
             {
                 var sink = _sinkFactory.CreateSink(item.Output);
-                var sinkSchema = new OutputSchema { Description = $"{item.Id}:{key}" };
-                await sink.InitializeAsync(sinkSchema, ct);
-
-                await foreach (var feature in featureSource.GetFeaturesAsync(cancellationToken: ct))
+                try
                 {
-                    await sink.WriteAsync(feature, ct);
-                }
+                    var sinkSchema = new OutputSchema { Description = $"{item.Id}:{key}" };
+                    await sink.InitializeAsync(sinkSchema, ct);
 
-                await sink.CompleteAsync(ct);
-                await SinkFactory.DisposeSinkAsync(sink);
+                    await foreach (var feature in featureSource.GetFeaturesAsync(cancellationToken: ct))
+                    {
+                        await sink.WriteAsync(feature, ct);
+                    }
+
+                    await sink.CompleteAsync(ct);
+                }
+                finally
+                {
+                    await SinkFactory.DisposeSinkAsync(sink);
+                }
             }
         }
     }

@@ -16,7 +16,7 @@ public class HostBuilder
 
     public HostBuilder ConfigureLogging(Action<ILoggingBuilder> configure)
     {
-        _loggingConfig += configure;
+        _loggingConfig = configure;
         return this;
     }
 
@@ -24,7 +24,6 @@ public class HostBuilder
     {
         _services.AddLogging(builder =>
         {
-            builder.AddConsole();
             _loggingConfig?.Invoke(builder);
         });
 
