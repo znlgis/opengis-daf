@@ -15,16 +15,6 @@ public sealed class DafTestHost : IDisposable
     public string TempDir { get; }
     public string TestDataDir { get; }
 
-    static DafTestHost()
-    {
-        // 在最早时机清除 OSGeo4W 等系统级 GDAL 环境变量，
-        // 避免 MaxRev.Gdal 加载不兼容的系统插件造成崩溃
-        Environment.SetEnvironmentVariable("GDAL_DRIVER_PATH", null, EnvironmentVariableTarget.Process);
-        Environment.SetEnvironmentVariable("GDAL_DATA", null, EnvironmentVariableTarget.Process);
-        Environment.SetEnvironmentVariable("PROJ_LIB", null, EnvironmentVariableTarget.Process);
-        Environment.SetEnvironmentVariable("OSGEO4W_ROOT", null, EnvironmentVariableTarget.Process);
-    }
-
     public DafTestHost()
     {
         TempDir = Path.Combine(Path.GetTempPath(), $"daf_test_{Guid.NewGuid():N}");
