@@ -14,10 +14,14 @@ public sealed class OperatorPool : IOperatorPool
         _operators[op.Metadata.Id] = op;
 
         var category = op.Metadata.Category;
+        // Copy-on-write: replace the list atomically so concurrent readers never
+        // observe a partially-mutated List<string>.
         _categoryIndex.AddOrUpdate(
             category,
             _ => [op.Metadata.Id],
-            (_, list) => { list.Add(op.Metadata.Id); return list; });
+            (_, existing) => existing.Contains(op.Metadata.Id)
+                ? existing
+                : [.. existing, op.Metadata.Id]);
     }
 
     public bool Unregister(string operatorId)
@@ -28,9 +32,11 @@ public sealed class OperatorPool : IOperatorPool
         var category = op.Metadata.Category;
         if (_categoryIndex.TryGetValue(category, out var list))
         {
-            list.Remove(operatorId);
-            if (list.Count == 0)
+            var updated = list.Where(id => id != operatorId).ToList();
+            if (updated.Count == 0)
                 _categoryIndex.TryRemove(category, out _);
+            else
+                _categoryIndex[category] = updated;
         }
 
         return true;

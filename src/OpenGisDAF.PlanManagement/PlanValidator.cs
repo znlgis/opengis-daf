@@ -1,5 +1,6 @@
 namespace OpenGisDAF.PlanManagement;
 
+using System.Globalization;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using OpenGisDAF.Core;
@@ -439,11 +440,11 @@ public sealed partial class PlanValidator : IPlanValidator
             float f => f,
             short s => s,
             byte b => b,
-            string s => double.TryParse(s, out var parsed) ? parsed : null,
+            string s => double.TryParse(s, NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out var parsed) ? parsed : null,
             JsonElement je => je.ValueKind switch
             {
                 JsonValueKind.Number when je.TryGetDouble(out var jd) => jd,
-                JsonValueKind.String when double.TryParse(je.GetString(), out var js) => js,
+                JsonValueKind.String when double.TryParse(je.GetString(), NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out var js) => js,
                 _ => null
             },
             _ => null

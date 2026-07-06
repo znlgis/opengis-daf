@@ -12,6 +12,7 @@ namespace OpenGisDAF.Operators;
 public sealed class FieldCalculator : IOperator
 {
     private static readonly Regex FieldRefRegex = new(@"\{(\w+)\}", RegexOptions.Compiled);
+    private static readonly Regex SingleFieldRefRegex = new(@"^\{\w+\}$", RegexOptions.Compiled);
 
     public OperatorMetadata Metadata { get; } = new()
     {
@@ -244,10 +245,10 @@ public sealed class FieldCalculator : IOperator
 
         var trimmed = expression.Trim();
 
-        // Pure field reference: {field}
-        if (trimmed.Length >= 3 && trimmed[0] == '{' && trimmed[^1] == '}' && fieldRefs.Count == 1)
+        // Pure field reference: {field} (must be exactly one field ref, not e.g. {a}+{a})
+        if (SingleFieldRefRegex.IsMatch(trimmed))
         {
-            var refName = fieldRefs.First();
+            var refName = trimmed[1..^1];
             var rawValue = attrs.TryGetValue(refName, out var v) ? v : null;
             return SafeCoerceTo(rawValue, targetType);
         }

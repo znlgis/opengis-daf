@@ -144,7 +144,15 @@ public sealed partial class ExecutionEngine : IExecutionEngine
             };
         }
 
-        return lastResult! with { Elapsed = totalElapsed };
+        return lastResult is not null
+            ? lastResult with { Elapsed = totalElapsed }
+            : new ExecutionResult
+            {
+                Status = ExecutionStatus.Failed,
+                ErrorCode = ErrorCode.RtUnexpected,
+                ErrorMessage = "算子执行未返回任何结果",
+                Elapsed = totalElapsed
+            };
     }
 
     private static partial class Log
