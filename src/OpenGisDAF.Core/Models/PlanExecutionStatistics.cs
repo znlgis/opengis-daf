@@ -2,6 +2,7 @@ namespace OpenGisDAF.Core;
 
 public sealed record PlanExecutionStatistics
 {
+    public string ExecutionId { get; init; } = string.Empty;
     public DateTimeOffset StartTime { get; init; }
     public DateTimeOffset EndTime { get; init; }
     public TimeSpan TotalElapsed { get; init; }

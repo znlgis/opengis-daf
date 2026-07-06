@@ -11,32 +11,35 @@
 | 能力 | 说明 |
 |------|------|
 | 📋 方案驱动 | 通过 JSON 配置定义完整的数据处理流程，可复用、可版本化 |
-| 📐 空间分析 | 缓冲区分析、叠加分析、空间连接、网络分析等 |
-| ✅ 数据质检 | 拓扑检查、属性完整性、空间一致性验证，原生内置质量评分 |
-| 🔌 可扩展算子 | 插件式算子体系，第三方可通过 DLL 扩展自定义处理能力 |
-| 🗄️ 多数据源 | 统一 `IFeatureSource` 抽象，支持 PostGIS、Shapefile、GeoJSON、GDB 等格式 |
-| 📊 多种输出 | 支持写入数据库、文件、CSV、GeoPackage 及生成质检报告 |
-| 🌍 跨平台 | Windows / Linux / macOS（x64 + ARM64），支持 Docker 容器化部署 |
-| 🔒 安全可控 | 主动导入机制、敏感信息加密、审计日志、API 认证 |
+| 📐 空间分析 | 缓冲区、裁剪、相交检查、包含检查、坐标系转换 |
+| 📏 属性操作 | 字段计算器（表达式引擎）、空值填充 |
+| ✅ 数据质检 | 几何有效性检查、属性完整性检查，原生内置质量评分 |
+| 🔌 可扩展算子 | 插件式算子体系，通过 `AssemblyLoadContext` 动态加载 DLL |
+| 🗄️ 多数据源 | `IFeatureSource` 抽象 — PostGIS、Shapefile、GeoJSON、内存数据集 |
+| 📊 多种输出 | `IFeatureSink` 抽象 — 控制台、GeoJSON、Shapefile、PostGIS |
+| 📐 方案管理 | 21 条校验规则、版本回退、跨版本 Diff、原子写入 |
+| ⚡ DAG 调度 | Kahn 算法拓扑排序 + 串行/并行调度、超时/重试控制 |
+| 🌍 跨平台 | Windows / Linux / macOS，支持 Docker 容器化部署 |
 
 ## 快速开始
 
-> 项目当前处于设计完成、即将进入编码阶段。以下为规划的使用方式。
-
-### CLI 执行方案
+### 构建
 
 ```bash
-# 校验方案配置
-daf validate --plan ./plans/my-analysis.json
+dotnet build
+```
 
-# 执行分析/质检方案
-daf run --plan ./plans/my-analysis.json
+### 运行分析方案
+
+```bash
+# 校验方案
+daf validate --plan plans/my-analysis.json
+
+# 执行分析/质检
+daf run --plan plans/my-analysis.json
 
 # 列出已注册算子
 daf operator list
-
-# 导入算子插件
-daf operator import --dll ./plugins/MyOperator.dll
 ```
 
 ### 方案示例
@@ -48,14 +51,14 @@ daf operator import --dll ./plugins/MyOperator.dll
   "version": "1.0.0",
   "items": [
     {
-      "id": "item-1",
-      "operatorId": "qc.topology.overlap",
-      "parameters": { "tolerance": 0.001 },
-      "inputs": { "data": { "type": "External", "sourceId": "landuse-shp" } },
+      "id": "attr-check",
+      "operatorId": "attribute_completeness_checker",
+      "parameters": { "required_fields": ["land_use", "area"] },
+      "inputs": { "source": { "type": "External", "sourceId": "landuse-geojson" } },
       "output": { "adapterType": "ConsoleWriter" }
     }
   ],
-  "executionPolicy": { "maxParallelism": 4 }
+  "executionPolicy": { "failurePolicy": "StopOnAny" }
 }
 ```
 
@@ -63,47 +66,84 @@ daf operator import --dll ./plugins/MyOperator.dll
 
 ```
  ┌────────────────────────────────────────────┐
- │              API / CLI 层                    │
+ │              CLI 层 (OpenGisDAF.Cli)         │
  ├────────────────────────────────────────────┤
- │              方案管理层                       │
+ │           方案管理层 (PlanManagement)         │
  ├────────────────────────────────────────────┤
- │              调度引擎层                       │
+ │            调度引擎层 (Scheduling)             │
  ├────────────────────────────────────────────┤
- │              执行引擎层                       │
+ │            执行引擎层 (Execution)              │
  ├────────────────────────────────────────────┤
- │                算子池                         │
+ │              算子池 (Operators)               │
  ├────────────────────────────────────────────┤
- │         数据源适配层 │ 输出适配层              │
+ │      数据源适配层 / 输出适配层 (Adapters)       │
  ├────────────────────────────────────────────┤
- │           基础设施（日志/安全/DI）             │
+ │         基础设施层 (Infrastructure)            │
  └────────────────────────────────────────────┘
 ```
 
-详细设计见 [设计文档](docs/GIS数据分析框架设计文档.md)。
+详细设计见：[设计文档](docs/GIS数据分析框架设计文档.md)
+
+## 内置算子
+
+| 算子 ID | 分类 | 说明 |
+|---------|------|------|
+| `buffer` | 空间运算 | 缓冲区分析 |
+| `clip` | 空间运算 | 裁剪分析 |
+| `intersect_check` | 空间关系 | 相交检查（支持两集合和自相交） |
+| `containment_check` | 空间关系 | 包含检查（contains / within） |
+| `coordinate_transform` | 格式转换 | 坐标系转换 |
+| `field_calculator` | 属性操作 | 字段计算器（表达式 + 算术解析器） |
+| `null_value_filler` | 属性操作 | 空值填充 |
+| `attribute_completeness_checker` | 质检 | 属性完整性检查 |
+| `geometry_validity_checker` | 质检 | 几何有效性检查 |
+
+详见：[算子参考](docs/operator-reference.md)
+
+## 数据源与输出适配器
+
+**数据源（IFeatureSource）：**
+- `GeoJsonFeatureSource` — `.geojson` / `.json`
+- `ShapefileFeatureSource` — `.shp`
+- `PostgisFeatureSource` — PostgreSQL/PostGIS
+- `InMemoryFeatureSource` — 内存数据集
+
+**输出（IFeatureSink）：**
+- `ConsoleFeatureSink` — 控制台
+- `GeoJsonFeatureSink` — GeoJSON 文件
+- `ShapefileFeatureSink` — Shapefile
+- `PostgisFeatureSink` — PostGIS 表
 
 ## 技术栈
 
 | 技术 | 版本 | 用途 |
 |------|------|------|
-| .NET | 10 LTS | 运行框架 |
+| .NET | 10.0 | 运行框架 |
 | C# | 14 | 开发语言 |
 | GDAL/OGR | 3.x | GIS 核心（数据读写、坐标转换） |
-| NetTopologySuite | 2.x | 轻量空间计算补充 |
-| System.Text.Json | - | 序列化 |
-| Microsoft.Extensions.* | - | DI、日志、配置 |
+| NetTopologySuite | 2.6 | 轻量空间计算 |
+| Npgsql | 10.0 | PostgreSQL 连接 |
+| Serilog | 4.3 | 结构化日志 |
+| xUnit v3 | 3.2 | 测试框架 |
 
 ## 文档
 
-- [需求文档](docs/GIS数据分析框架需求文档.md) —— 业务目标、功能需求、阶段规划
-- [设计文档](docs/GIS数据分析框架设计文档.md) —— 架构设计、接口定义、执行机制
-- [贡献指南](CONTRIBUTING.md) —— 如何参与贡献
+| 文档 | 说明 |
+|------|------|
+| [需求文档](docs/GIS数据分析框架需求文档.md) | 业务目标、功能需求 |
+| [设计文档](docs/GIS数据分析框架设计文档.md) | 架构设计、接口定义 |
+| [快速入门](docs/quickstart.md) | 5 分钟上手指南 |
+| [CLI 参考](docs/cli-reference.md) | 命令行接口说明 |
+| [方案配置指南](docs/plan-config-guide.md) | plan.json 配置详解 |
+| [算子参考](docs/operator-reference.md) | 所有内置算子说明 |
+| [贡献指南](CONTRIBUTING.md) | 如何参与贡献 |
 
 ## 阶段规划
 
 | 阶段 | 目标 | 状态 |
 |------|------|------|
-| Phase 1 | MVP：串联执行、5-8 个核心算子、3-5 个数据源 | 🔜 即将开始 |
-| Phase 2 | 并行调度、20+ 算子、更多适配器、安全 | 📅 规划中 |
+| Phase 1 | MVP：串联执行、10 个核心算子、4 种数据源、4 种输出 | ✅ 基本完成 |
+| Phase 2 | 并行调度、20+ 算子、更多适配器、安全增强 | 📅 规划中 |
 | Phase 3 | 分布式、可视化编辑器、插件市场 | 📅 远期规划 |
 
 ## 许可证

@@ -237,7 +237,7 @@ public sealed class AttributeCompletenessChecker : IOperator
                 {
                     PlanId = context.PlanId,
                     ExecutionId = context.ExecutionId,
-                    ItemId = context.ExecutionId,
+                    ItemId = context.CurrentItemId,
                     FeatureId = feature.Id,
                     IssueType = "ATTR_MISSING",
                     Severity = IssueSeverity.Error,
@@ -255,7 +255,7 @@ public sealed class AttributeCompletenessChecker : IOperator
                 {
                     PlanId = context.PlanId,
                     ExecutionId = context.ExecutionId,
-                    ItemId = context.ExecutionId,
+                    ItemId = context.CurrentItemId,
                     FeatureId = feature.Id,
                     IssueType = "ATTR_EMPTY",
                     Severity = IssueSeverity.Warning,

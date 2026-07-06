@@ -417,9 +417,8 @@ public sealed partial class PlanValidator : IPlanValidator
 
     private static void CrsPreCheck(AnalysisPlan plan, List<ValidationError> warnings)
     {
-        // PlanExecutionPolicy has no CRS configuration field; emit a pre-check warning.
-        warnings.Add(NewWarning(ErrorCode.DsCrsNotDeclared,
-            "No CRS (coordinate reference system) configuration declared in plan. CRS consistency checks will not be enforced.", null));
+        // CRS consistency check requires source metadata inspection at execution time.
+        // Static validation cannot determine CRS without loading actual data sources.
     }
 
     // ===== Helpers =====

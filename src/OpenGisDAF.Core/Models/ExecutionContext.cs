@@ -21,6 +21,8 @@ public sealed class ExecutionContext
     public ILogger Logger { get; init; } = null!;
     public IServiceProvider Services { get; init; } = null!;
     public PlanExecutionStatistics Statistics { get; init; } = null!;
+    public string CurrentItemId { get; set; } = string.Empty;
 
-    public ExecutionContext() { } // for deserialization
+    // 保留无参数构造器以支持 System.Text.Json 反序列化
+    public ExecutionContext() { }
 }

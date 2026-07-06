@@ -368,5 +368,4 @@ public sealed class ContainmentCheckOperator : IOperator
         };
     }
 
-    private sealed record SimpleFeature(string Id, Geometry Geometry, IReadOnlyDictionary<string, object?> Attributes) : IFeature;
 }

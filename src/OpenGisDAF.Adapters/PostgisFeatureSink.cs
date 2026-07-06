@@ -134,6 +134,10 @@ public sealed class PostgisFeatureSink : IFeatureSink
         return $"PG:host='{EscapePgValue(builder.Host!)}' port={builder.Port} dbname='{EscapePgValue(builder.Database!)}' user='{EscapePgValue(builder.Username!)}' password='{EscapePgValue(password)}'";
     }
 
+    /// <summary>
+    /// 为 GDAL PG: 连接字符串转义值中的单引号和反斜杠。
+    /// 先转义反斜杠再转义单引号，避免对已转义序列的二次转义。
+    /// </summary>
     private static string EscapePgValue(string value)
     {
         if (string.IsNullOrEmpty(value)) return value;

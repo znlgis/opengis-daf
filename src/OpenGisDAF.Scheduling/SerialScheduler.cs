@@ -75,7 +75,8 @@ public sealed partial class SerialScheduler : ISchedulingEngine
 
         // Step 3: Create execution context
         var context = new ExecutionContext(
-            plan.Id, executionId, _resultCache, _logger, _serviceProvider, null!);
+            plan.Id, executionId, _resultCache, _logger, _serviceProvider,
+            new PlanExecutionStatistics { StartTime = startTime });
 
         // Step 4: Execute items in topological order
         var externalSources = new Dictionary<string, IFeatureSource>();
@@ -96,6 +97,7 @@ public sealed partial class SerialScheduler : ISchedulingEngine
                     var resolvedInputs = await ResolveInputsAsync(item, executionId, externalSources);
 
                     // Execute
+                    context.CurrentItemId = item.Id;
                     var result = await _executionEngine.ExecuteItemAsync(
                         item, resolvedInputs, context, cancellationToken);
 
@@ -107,6 +109,14 @@ public sealed partial class SerialScheduler : ISchedulingEngine
                         await HandleOutputsAsync(item, result, executionId, cancellationToken);
                         await CacheOutputsForDownstream(item.Id, result, executionId);
                         CollectIssues(result, allIssues);
+
+                        itemStats.Add(new PerItemStats
+                        {
+                            ItemId = item.Id,
+                            OperatorId = item.OperatorId,
+                            Elapsed = itemSw.Elapsed,
+                            SuccessCount = 1
+                        });
                     }
                     else
                     {
@@ -144,16 +154,15 @@ public sealed partial class SerialScheduler : ISchedulingEngine
                             }
                             break;
                         }
-                    }
 
-                    itemStats.Add(new PerItemStats
-                    {
-                        ItemId = item.Id,
-                        OperatorId = item.OperatorId,
-                        Elapsed = itemSw.Elapsed,
-                        SuccessCount = result.Status == ExecutionStatus.Success ? 1 : 0,
-                        FailedCount = result.Status == ExecutionStatus.Failed ? 1 : 0
-                    });
+                        itemStats.Add(new PerItemStats
+                        {
+                            ItemId = item.Id,
+                            OperatorId = item.OperatorId,
+                            Elapsed = itemSw.Elapsed,
+                            FailedCount = 1
+                        });
+                    }
                 }
                 finally
                 {
@@ -206,6 +215,7 @@ public sealed partial class SerialScheduler : ISchedulingEngine
 
         return new PlanExecutionStatistics
         {
+            ExecutionId = executionId,
             StartTime = startTime,
             EndTime = endTime,
             TotalElapsed = planSw.Elapsed,

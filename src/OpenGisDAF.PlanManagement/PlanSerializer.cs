@@ -35,7 +35,7 @@ public sealed class PlanSerializer : IPlanSerializer
     {
         using var stream = new MemoryStream();
         await JsonSerializer.SerializeAsync(stream, plan, _options, cancellationToken);
-        return Encoding.UTF8.GetString(stream.GetBuffer(), 0, (int)stream.Length);
+        return Encoding.UTF8.GetString(stream.ToArray());
     }
 
     public async Task<AnalysisPlan> DeserializeAsync(Stream stream, CancellationToken cancellationToken = default)

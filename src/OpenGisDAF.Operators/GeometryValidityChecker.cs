@@ -183,7 +183,7 @@ public sealed class GeometryValidityChecker : IOperator
             {
                 PlanId = context.PlanId,
                 ExecutionId = context.ExecutionId,
-                ItemId = context.ExecutionId,
+                ItemId = context.CurrentItemId,
                 FeatureId = feature.Id,
                 IssueType = "GEOM_EMPTY",
                 Severity = IssueSeverity.Error,
@@ -205,7 +205,7 @@ public sealed class GeometryValidityChecker : IOperator
             {
                 PlanId = context.PlanId,
                 ExecutionId = context.ExecutionId,
-                ItemId = context.ExecutionId,
+                ItemId = context.CurrentItemId,
                 FeatureId = feature.Id,
                 IssueType = "GEOM_INVALID",
                 Severity = IssueSeverity.Error,
@@ -227,7 +227,7 @@ public sealed class GeometryValidityChecker : IOperator
             {
                 PlanId = context.PlanId,
                 ExecutionId = context.ExecutionId,
-                ItemId = context.ExecutionId,
+                ItemId = context.CurrentItemId,
                 FeatureId = feature.Id,
                 IssueType = "GEOM_NOT_SIMPLE",
                 Severity = IssueSeverity.Warning,

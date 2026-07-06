@@ -125,7 +125,7 @@ public sealed class CoordinateTransformOperator : IOperator
                     var transformedWkt = CrsUtil.Transform(wkt, sourceEpsg.Value, targetEpsg.Value);
                     var newGeometry = WktConverter.FromWkt(transformedWkt);
 
-                    transformedFeatures.Add(new Feature(feature.Id, newGeometry, feature.Attributes));
+                    transformedFeatures.Add(new SimpleFeature(feature.Id, newGeometry, feature.Attributes));
                     featureCount++;
                 }
                 catch (Exception ex)
@@ -198,9 +198,4 @@ public sealed class CoordinateTransformOperator : IOperator
         };
     }
 
-    private sealed record Feature(
-        string Id,
-        Geometry Geometry,
-        IReadOnlyDictionary<string, object?> Attributes
-    ) : IFeature;
 }

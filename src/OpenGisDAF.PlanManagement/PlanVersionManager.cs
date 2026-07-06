@@ -62,9 +62,9 @@ public sealed class PlanVersionManager : IPlanVersionManager
             _logger?.LogInformation(
                 "Backup created for plan {PlanId}: {BackupPath} (version {Version})",
                 planId, bakPath, nextVersion);
-        }
 
-        _backupLocks.TryRemove(planId, out _);
+            _backupLocks.TryRemove(planId, out _);
+        }
     }
 
     public async Task<IReadOnlyList<VersionHistoryEntry>> GetVersionHistoryAsync(

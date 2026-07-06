@@ -127,7 +127,7 @@ public sealed class ClipOperator : IOperator
 
                         seq++;
                         var resultId = $"{srcFeature.Id}_clip_{clipFeature.Id}_{seq}";
-                        results.Add(new ResultFeature(resultId, intersectedGeom, srcFeature.Attributes));
+                        results.Add(new SimpleFeature(resultId, intersectedGeom, srcFeature.Attributes));
                     }
                     catch (Exception ex)
                     {
@@ -173,17 +173,4 @@ public sealed class ClipOperator : IOperator
             Elapsed = elapsed
         };
 
-    private sealed class ResultFeature : IFeature
-    {
-        public string Id { get; }
-        public Geometry Geometry { get; }
-        public IReadOnlyDictionary<string, object?> Attributes { get; }
-
-        public ResultFeature(string id, Geometry geometry, IReadOnlyDictionary<string, object?> attributes)
-        {
-            Id = id;
-            Geometry = geometry;
-            Attributes = attributes;
-        }
-    }
 }

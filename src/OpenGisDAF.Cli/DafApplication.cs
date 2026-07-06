@@ -17,6 +17,8 @@ public sealed class DafApplication
 
     public DafApplication()
     {
+        ExceptionHandler.ConfigureGlobalHandler();
+
         var builder = new HostBuilder();
 
         builder.ConfigureServices(services =>
@@ -104,14 +106,23 @@ public sealed class DafApplication
 #pragma warning restore CA1848, CA1873
 
         using var cts = new CancellationTokenSource();
-        Console.CancelKeyPress += (_, e) =>
+        ConsoleCancelEventHandler handler = (_, e) =>
         {
             e.Cancel = true;
             cts.Cancel();
             Console.WriteLine("正在取消...");
         };
+        Console.CancelKeyPress += handler;
 
-        var stats = await scheduler.ExecuteAsync(plan, cts.Token);
+        PlanExecutionStatistics stats;
+        try
+        {
+            stats = await scheduler.ExecuteAsync(plan, cts.Token);
+        }
+        finally
+        {
+            Console.CancelKeyPress -= handler;
+        }
 
         Console.WriteLine();
         Console.WriteLine("=== 执行完成 ===");
@@ -146,7 +157,7 @@ public sealed class DafApplication
             .ToDictionary(g => g.Key, g => g.ToList());
 
         var report = QualityReportGenerator.Generate(
-            stats.Issues, issuesByItem, plan, Guid.NewGuid().ToString("N"));
+            stats.Issues, issuesByItem, plan, stats.ExecutionId);
 
         await QualityReportGenerator.SaveAsync(report, reportPath);
         Console.WriteLine($"质检报告已保存: {reportPath}");

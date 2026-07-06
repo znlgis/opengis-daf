@@ -121,14 +121,25 @@ public sealed partial class ExecutionEngine : IExecutionEngine
         {
             throw;
         }
-        catch (Exception ex)
+        catch (ArgumentException ex)
         {
             Log.OperatorExecutionError(_logger, ex);
             return new ExecutionResult
             {
                 Status = ExecutionStatus.Failed,
                 ErrorCode = ErrorCode.RtUnexpected,
-                ErrorMessage = $"算子异常: {ex.Message}",
+                ErrorMessage = $"算子参数异常: {ex.Message}",
+                Elapsed = totalElapsed
+            };
+        }
+        catch (InvalidOperationException ex)
+        {
+            Log.OperatorExecutionError(_logger, ex);
+            return new ExecutionResult
+            {
+                Status = ExecutionStatus.Failed,
+                ErrorCode = ErrorCode.RtUnexpected,
+                ErrorMessage = $"算子执行异常: {ex.Message}",
                 Elapsed = totalElapsed
             };
         }

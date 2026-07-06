@@ -85,7 +85,7 @@ public sealed class NullValueFiller : IOperator
             });
         }
 
-        var fieldTypeStr = GetStringParam(config.Parameters, "field_type");
+        var fieldTypeStr = OperatorHelper.GetStringParam(config.Parameters, "field_type");
         if (fieldTypeStr is null)
         {
             errors.Add(new ValidationError
@@ -95,7 +95,7 @@ public sealed class NullValueFiller : IOperator
                 Message = "参数 'field_type' 是必需的。"
             });
         }
-        else if (ParseFieldType(fieldTypeStr) is null)
+        else if (OperatorHelper.ParseFieldType(fieldTypeStr) is null)
         {
             errors.Add(new ValidationError
             {
@@ -139,12 +139,12 @@ public sealed class NullValueFiller : IOperator
         {
             var targetField = (string)parameters["target_field"]!;
             var defaultStr = (string)parameters["default_value"]!;
-            var fieldType = ParseFieldType((string)parameters["field_type"]!)!.Value;
-            var defaultValue = CoerceTo(defaultStr, fieldType);
+            var fieldType = OperatorHelper.ParseFieldType((string)parameters["field_type"]!)!.Value;
+            var defaultValue = OperatorHelper.CoerceTo(defaultStr, fieldType);
 
             if (!inputs.TryGetValue("source", out var source))
             {
-                return Fail("缺少输入 'source'", sw.Elapsed, logs);
+                return OperatorHelper.Fail("缺少输入 'source'", sw.Elapsed, logs);
             }
 
             var results = new List<IFeature>();
@@ -166,7 +166,7 @@ public sealed class NullValueFiller : IOperator
                     {
                         [targetField] = defaultValue
                     };
-                    results.Add(new Feature(feature.Id, feature.Geometry, attrs));
+                    results.Add(new SimpleFeature(feature.Id, feature.Geometry, attrs));
                 }
                 else
                 {
@@ -211,54 +211,7 @@ public sealed class NullValueFiller : IOperator
         catch (Exception ex)
         {
             context.Logger.LogError(ex, "[NullValueFiller] 执行失败");
-            return Fail($"空值填充失败: {ex.Message}", sw.Elapsed, logs);
+            return OperatorHelper.Fail($"空值填充失败: {ex.Message}", sw.Elapsed, logs);
         }
     }
-
-    private static object? CoerceTo(string value, FieldType targetType)
-    {
-        return targetType switch
-        {
-            FieldType.String => value,
-            FieldType.Integer => int.Parse(value, CultureInfo.InvariantCulture),
-            FieldType.Double => double.Parse(value, CultureInfo.InvariantCulture),
-            FieldType.Boolean => bool.Parse(value),
-            FieldType.DateTime => DateTime.Parse(value, CultureInfo.InvariantCulture, DateTimeStyles.None),
-            _ => value
-        };
-    }
-
-    private static FieldType? ParseFieldType(string type) => type.ToLowerInvariant() switch
-    {
-        "string" => FieldType.String,
-        "integer" => FieldType.Integer,
-        "double" => FieldType.Double,
-        "boolean" => FieldType.Boolean,
-        "datetime" => FieldType.DateTime,
-        _ => null
-    };
-
-    private static string? GetStringParam(IReadOnlyDictionary<string, object?> parameters, string name)
-    {
-        if (!parameters.TryGetValue(name, out var val)) return null;
-        return val is string s && !string.IsNullOrWhiteSpace(s) ? s : null;
-    }
-
-    private static ExecutionResult Fail(string message, TimeSpan elapsed, IReadOnlyList<ExecutionLogEntry> logs)
-    {
-        return new ExecutionResult
-        {
-            Status = ExecutionStatus.Failed,
-            ErrorCode = ErrorCode.RtUnexpected,
-            ErrorMessage = message,
-            Elapsed = elapsed,
-            Logs = logs
-        };
-    }
-
-    private sealed record Feature(
-        string Id,
-        Geometry Geometry,
-        IReadOnlyDictionary<string, object?> Attributes
-    ) : IFeature;
 }

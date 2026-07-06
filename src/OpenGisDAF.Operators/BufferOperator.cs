@@ -140,7 +140,7 @@ public sealed class BufferOperator : IOperator
                     var bufferedWkt = GeometryUtil.BufferWkt(srcWkt, distance);
                     var bufferedGeom = WktConverter.FromWkt(bufferedWkt);
 
-                    results.Add(new ResultFeature(
+                    results.Add(new SimpleFeature(
                         feature.Id,
                         bufferedGeom,
                         feature.Attributes));
@@ -194,17 +194,4 @@ public sealed class BufferOperator : IOperator
             Elapsed = elapsed
         };
 
-    private sealed class ResultFeature : IFeature
-    {
-        public string Id { get; }
-        public Geometry Geometry { get; }
-        public IReadOnlyDictionary<string, object?> Attributes { get; }
-
-        public ResultFeature(string id, Geometry geometry, IReadOnlyDictionary<string, object?> attributes)
-        {
-            Id = id;
-            Geometry = geometry;
-            Attributes = attributes;
-        }
-    }
 }

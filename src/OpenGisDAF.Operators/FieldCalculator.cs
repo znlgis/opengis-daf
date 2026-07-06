@@ -88,7 +88,7 @@ public sealed class FieldCalculator : IOperator
             });
         }
 
-        var fieldTypeStr = GetStringParam(config.Parameters, "field_type");
+        var fieldTypeStr = OperatorHelper.GetStringParam(config.Parameters, "field_type");
         if (fieldTypeStr is null)
         {
             errors.Add(new ValidationError
@@ -98,7 +98,7 @@ public sealed class FieldCalculator : IOperator
                 Message = "参数 'field_type' 是必需的。"
             });
         }
-        else if (ParseFieldType(fieldTypeStr) is null)
+        else if (OperatorHelper.ParseFieldType(fieldTypeStr) is null)
         {
             errors.Add(new ValidationError
             {
@@ -142,11 +142,11 @@ public sealed class FieldCalculator : IOperator
         {
             var targetField = (string)parameters["target_field"]!;
             var expression = (string)parameters["expression"]!;
-            var fieldType = ParseFieldType((string)parameters["field_type"]!)!.Value;
+            var fieldType = OperatorHelper.ParseFieldType((string)parameters["field_type"]!)!.Value;
 
             if (!inputs.TryGetValue("source", out var source))
             {
-                return Fail("缺少输入 'source'", sw.Elapsed, logs);
+                return OperatorHelper.Fail("缺少输入 'source'", sw.Elapsed, logs);
             }
 
             var fieldRefs = ExtractFieldRefs(expression);
@@ -171,7 +171,7 @@ public sealed class FieldCalculator : IOperator
                 }
 
                 var attrs = new Dictionary<string, object?>(feature.Attributes) { [targetField] = computed };
-                results.Add(new Feature(feature.Id, feature.Geometry, attrs));
+                results.Add(new SimpleFeature(feature.Id, feature.Geometry, attrs));
                 count++;
             }
 
@@ -212,7 +212,7 @@ public sealed class FieldCalculator : IOperator
         catch (Exception ex)
         {
             context.Logger.LogError(ex, "[FieldCalculator] 执行失败");
-            return Fail($"字段计算失败: {ex.Message}", sw.Elapsed, logs);
+            return OperatorHelper.Fail($"字段计算失败: {ex.Message}", sw.Elapsed, logs);
         }
     }
 
@@ -273,7 +273,7 @@ public sealed class FieldCalculator : IOperator
     {
         try
         {
-            return CoerceTo(value, targetType);
+            return OperatorHelper.CoerceTo(value, targetType);
         }
         catch (Exception)
         {
@@ -292,21 +292,6 @@ public sealed class FieldCalculator : IOperator
         return value.ToString() ?? "0";
     }
 
-    private static object? CoerceTo(object? value, FieldType targetType)
-    {
-        if (value is null) return null;
-
-        return targetType switch
-        {
-            FieldType.String => value.ToString()!,
-            FieldType.Integer => Convert.ToInt32(value, CultureInfo.InvariantCulture),
-            FieldType.Double => Convert.ToDouble(value, CultureInfo.InvariantCulture),
-            FieldType.Boolean => Convert.ToBoolean(value, CultureInfo.InvariantCulture),
-            FieldType.DateTime => Convert.ToDateTime(value, CultureInfo.InvariantCulture),
-            _ => value.ToString()!
-        };
-    }
-
     private static double EvaluateArithmetic(string expr)
     {
         var parser = new MathParser(expr);
@@ -315,40 +300,6 @@ public sealed class FieldCalculator : IOperator
             throw new FormatException($"表达式在位置 {parser.Pos} 处有未预期的字符");
         return result;
     }
-
-    private static FieldType? ParseFieldType(string type) => type.ToLowerInvariant() switch
-    {
-        "string" => FieldType.String,
-        "integer" => FieldType.Integer,
-        "double" => FieldType.Double,
-        "boolean" => FieldType.Boolean,
-        "datetime" => FieldType.DateTime,
-        _ => null
-    };
-
-    private static string? GetStringParam(IReadOnlyDictionary<string, object?> parameters, string name)
-    {
-        if (!parameters.TryGetValue(name, out var val)) return null;
-        return val is string s && !string.IsNullOrWhiteSpace(s) ? s : null;
-    }
-
-    private static ExecutionResult Fail(string message, TimeSpan elapsed, IReadOnlyList<ExecutionLogEntry> logs)
-    {
-        return new ExecutionResult
-        {
-            Status = ExecutionStatus.Failed,
-            ErrorCode = ErrorCode.RtUnexpected,
-            ErrorMessage = message,
-            Elapsed = elapsed,
-            Logs = logs
-        };
-    }
-
-    private sealed record Feature(
-        string Id,
-        Geometry Geometry,
-        IReadOnlyDictionary<string, object?> Attributes
-    ) : IFeature;
 
     /// <summary>
     /// 简化的递归下降算术解析器，支持 + - * / 和括号。
