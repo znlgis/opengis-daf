@@ -23,23 +23,53 @@
 
 ## 快速开始
 
+### 环境要求
+
+- [.NET SDK 10.0](https://dotnet.microsoft.com/)（见 `global.json`）
+- Git（用于拉取子模块）
+
+### 获取源码
+
+本项目通过 Git 子模块引用 [`opengis-utils-for-net`](https://github.com/znlgis/opengis-utils-for-net)，克隆时需一并初始化子模块，否则构建会失败：
+
+```bash
+# 克隆并初始化子模块
+git clone --recurse-submodules https://github.com/znlgis/opengis-daf.git
+
+# 若已克隆但未拉取子模块
+git submodule update --init --recursive
+```
+
 ### 构建
 
 ```bash
-dotnet build
+dotnet build            # 或使用 ./build.sh (Linux/macOS) / ./build.ps1 (Windows)
+```
+
+### 测试
+
+```bash
+dotnet test
 ```
 
 ### 运行分析方案
 
 ```bash
-# 校验方案
+# 校验方案（Dry-Run，不执行）
 daf validate --plan plans/my-analysis.json
 
 # 执行分析/质检
 daf run --plan plans/my-analysis.json
 
-# 列出已注册算子
-daf operator list
+# 算子管理
+daf operator list [--category <分类>]   # 列出已注册算子
+daf operator import --dll <path>        # 动态导入算子 DLL
+
+# 方案管理
+daf plan list [--group <组>]                       # 列出方案
+daf plan create --name <名称> [--group <组>]        # 新建方案
+daf plan copy --source <组/名> --target <组/名>      # 复制方案
+daf plan export --plan <组/名> [--output <path>]    # 导出方案
 ```
 
 ### 方案示例
