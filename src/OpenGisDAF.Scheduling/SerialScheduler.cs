@@ -45,7 +45,6 @@ public sealed partial class SerialScheduler : ISchedulingEngine
         var allIssues = new List<IssueRecord>();
         var startTime = DateTimeOffset.UtcNow;
 
-        // Step 1: Build and validate DAG
         var dagResult = DagBuilder.Build(plan.Items);
         if (!dagResult.IsValid)
         {
@@ -59,7 +58,6 @@ public sealed partial class SerialScheduler : ISchedulingEngine
             };
         }
 
-        // Step 2: Topological sort
         var sortResult = TopologicalSorter.Sort(plan.Items, dagResult.Adjacency!);
         if (!sortResult.IsComplete)
         {
@@ -73,13 +71,8 @@ public sealed partial class SerialScheduler : ISchedulingEngine
             };
         }
 
-        // Step 3: Create execution context
-        var context = new ExecutionContext(
-            plan.Id, executionId, _resultCache, _logger, _serviceProvider,
-            new PlanExecutionStatistics { StartTime = startTime });
-
-        // Step 4: Execute items in topological order
         var externalSources = new Dictionary<string, IFeatureSource>();
+        var failedItemIds = new HashSet<string>();
 
         try
         {
@@ -87,17 +80,34 @@ public sealed partial class SerialScheduler : ISchedulingEngine
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
+                // When ContinueIndependent, skip items whose upstream dependencies failed
+                if (plan.ExecutionPolicy.FailurePolicy == FailurePolicy.ContinueIndependent
+                    && HasFailedUpstream(item, failedItemIds))
+                {
+                    itemStats.Add(new PerItemStats
+                    {
+                        ItemId = item.Id,
+                        OperatorId = item.OperatorId,
+                        Elapsed = TimeSpan.Zero,
+                        SkippedCount = 1
+                    });
+                    Log.ItemSkippedUpstreamFailed(_logger, item.Id);
+                    continue;
+                }
+
                 await _concurrencyController.WaitAsync(cancellationToken);
                 try
                 {
                     Log.ItemExecutionStart(_logger, item.Id, item.OperatorId);
                     var itemSw = Stopwatch.StartNew();
 
-                    // Resolve inputs
                     var resolvedInputs = await ResolveInputsAsync(item, executionId, externalSources);
 
                     // Execute
-                    context.CurrentItemId = item.Id;
+                    var context = new ExecutionContext(
+                        plan.Id, executionId, _resultCache, _logger, _serviceProvider,
+                        new PlanExecutionStatistics { StartTime = startTime },
+                        currentItemId: item.Id);
                     var result = await _executionEngine.ExecuteItemAsync(
                         item, resolvedInputs, context, cancellationToken);
 
@@ -122,6 +132,7 @@ public sealed partial class SerialScheduler : ISchedulingEngine
                     {
                         Log.ItemExecutionFailed(
                             _logger, item.Id, result.ErrorCode ?? "UNKNOWN", result.ErrorMessage ?? "无错误信息");
+                        failedItemIds.Add(item.Id);
 
                         if (plan.ExecutionPolicy.FailurePolicy == FailurePolicy.StopOnAny)
                         {
@@ -249,7 +260,7 @@ public sealed partial class SerialScheduler : ISchedulingEngine
                     var cached = await _resultCache.GetOrComputeAsync<IFeatureSource>(
                         cacheKey,
                         () => throw new InvalidOperationException(
-                            $"上游分析项 '{binding.SourceId}' 的结果不在缓存中（执行顺序异常）"));
+                            $"上游分析项 '{binding.SourceId}' 的结果不可用（未执行或执行失败）"));
                     if (cached is null)
                         throw new InvalidOperationException(
                             $"上游分析项 '{binding.SourceId}' 的结果为空");
@@ -314,6 +325,11 @@ public sealed partial class SerialScheduler : ISchedulingEngine
         }
     }
 
+    private static bool HasFailedUpstream(AnalysisItem item, HashSet<string> failedItemIds)
+    {
+        return item.Inputs.Values.Any(b => b is { Type: BindingType.Upstream } && failedItemIds.Contains(b.SourceId));
+    }
+
     private static void CollectIssues(ExecutionResult result, List<IssueRecord> allIssues)
     {
         foreach (var (_, value) in result.Outputs)
@@ -344,6 +360,10 @@ public sealed partial class SerialScheduler : ISchedulingEngine
         [LoggerMessage(Level = LogLevel.Error,
             Message = "失败策略为 StopOnAny，终止执行")]
         public static partial void StopOnAny(ILogger logger);
+
+        [LoggerMessage(Level = LogLevel.Warning,
+            Message = "分析项 {ItemId} 因上游依赖执行失败而跳过")]
+        public static partial void ItemSkippedUpstreamFailed(ILogger logger, string itemId);
 
         [LoggerMessage(Level = LogLevel.Critical,
             Message = "方案执行因未受控异常而终止")]

@@ -132,6 +132,11 @@ public sealed class GeoJsonFeatureSource : IFeatureSource
 
     public ValueTask DisposeAsync()
     {
+        foreach (var layer in _layerCache.Values)
+        {
+            if (layer is IDisposable disposable)
+                disposable.Dispose();
+        }
         _layerCache.Clear();
         _cachedBoundingBox = null;
         _cachedSpatialReference = null;

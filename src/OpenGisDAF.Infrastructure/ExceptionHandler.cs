@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging;
+using Serilog;
 
 namespace OpenGisDAF.Infrastructure;
 
@@ -7,6 +7,8 @@ public static class ExceptionHandler
     private static bool _isConfigured;
     private static readonly object _lock = new();
     private static ILogger? _logger;
+
+    public static void SetLogger(ILogger logger) => _logger = logger;
 
     public static void ConfigureGlobalHandler(ILogger? logger = null)
     {
@@ -24,7 +26,7 @@ public static class ExceptionHandler
             var currentLogger = _logger;
             if (currentLogger != null)
             {
-                currentLogger.LogCritical(ex, "Unhandled exception: {Message}", message);
+                currentLogger.Fatal(ex, "Unhandled exception: {Message}", message);
             }
             else
             {
@@ -40,7 +42,7 @@ public static class ExceptionHandler
             var currentLogger = _logger;
             if (currentLogger != null)
             {
-                currentLogger.LogError(args.Exception, "Unobserved task exception: {Message}", message);
+                currentLogger.Error(args.Exception, "Unobserved task exception: {Message}", message);
             }
             else
             {

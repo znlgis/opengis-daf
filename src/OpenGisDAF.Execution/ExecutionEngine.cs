@@ -117,10 +117,6 @@ public sealed partial class ExecutionEngine : IExecutionEngine
                 Log.ExecutionFailedRetrying(_logger, result.ErrorCode);
             }
         }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
         catch (ArgumentException ex)
         {
             Log.OperatorExecutionError(_logger, ex);
@@ -144,15 +140,7 @@ public sealed partial class ExecutionEngine : IExecutionEngine
             };
         }
 
-        return lastResult is not null
-            ? lastResult with { Elapsed = totalElapsed }
-            : new ExecutionResult
-            {
-                Status = ExecutionStatus.Failed,
-                ErrorCode = ErrorCode.RtUnexpected,
-                ErrorMessage = "算子执行未返回任何结果",
-                Elapsed = totalElapsed
-            };
+        return lastResult! with { Elapsed = totalElapsed };
     }
 
     private static partial class Log

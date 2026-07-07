@@ -106,7 +106,7 @@ public sealed class GeoJsonFeatureSink : IFeatureSink
         var schema = _schema!;
 
         if (schema.ProducedGeometryType is not null)
-            layer.GeometryType = MapToOguGeometryType(schema.ProducedGeometryType.Value);
+            layer.GeometryType = GeometryTypeMapper.ToOguGeometryType(schema.ProducedGeometryType.Value);
 
         var declaredFieldNames = schema.ProducedFields
             .Where(f => f.Type != FieldType.Geometry)
@@ -124,7 +124,7 @@ public sealed class GeoJsonFeatureSink : IFeatureSink
                 layer.Fields.Add(new OguField
                 {
                     Name = fieldDef.Name,
-                    DataType = MapToFieldDataType(fieldDef.Type),
+                    DataType = FieldTypeMapper.ToFieldDataType(fieldDef.Type),
                     IsNullable = !fieldDef.Required
                 });
             }
@@ -184,34 +184,5 @@ public sealed class GeoJsonFeatureSink : IFeatureSink
             options["encoding"] = fmt.Encoding;
 
         return options.Count > 0 ? options : null;
-    }
-
-    private static FieldDataType MapToFieldDataType(FieldType fieldType)
-    {
-        return fieldType switch
-        {
-            FieldType.String => FieldDataType.STRING,
-            FieldType.Integer => FieldDataType.INTEGER,
-            FieldType.Double => FieldDataType.DOUBLE,
-            FieldType.DateTime => FieldDataType.DATETIME,
-            FieldType.Boolean => FieldDataType.BOOLEAN,
-            _ => FieldDataType.STRING
-        };
-    }
-
-    private static OpenGIS.Utils.Engine.Enums.GeometryType MapToOguGeometryType(
-        OpenGisDAF.Core.GeometryType geometryType)
-    {
-        return geometryType switch
-        {
-            OpenGisDAF.Core.GeometryType.Point => OpenGIS.Utils.Engine.Enums.GeometryType.POINT,
-            OpenGisDAF.Core.GeometryType.MultiPoint => OpenGIS.Utils.Engine.Enums.GeometryType.MULTIPOINT,
-            OpenGisDAF.Core.GeometryType.LineString => OpenGIS.Utils.Engine.Enums.GeometryType.LINESTRING,
-            OpenGisDAF.Core.GeometryType.MultiLineString => OpenGIS.Utils.Engine.Enums.GeometryType.MULTILINESTRING,
-            OpenGisDAF.Core.GeometryType.Polygon => OpenGIS.Utils.Engine.Enums.GeometryType.POLYGON,
-            OpenGisDAF.Core.GeometryType.MultiPolygon => OpenGIS.Utils.Engine.Enums.GeometryType.MULTIPOLYGON,
-            OpenGisDAF.Core.GeometryType.GeometryCollection => OpenGIS.Utils.Engine.Enums.GeometryType.GEOMETRYCOLLECTION,
-            _ => OpenGIS.Utils.Engine.Enums.GeometryType.UNKNOWN
-        };
     }
 }

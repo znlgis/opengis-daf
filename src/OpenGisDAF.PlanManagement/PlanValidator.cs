@@ -226,8 +226,6 @@ public sealed partial class PlanValidator : IPlanValidator
         // Rule 19: Output binding completeness for non-final items (Warning)
         ValidateOutputBindings(plan.Items, referencedItems, warnings);
 
-        // Rule 21: CRS consistency pre-check (Warning)
-        CrsPreCheck(plan, warnings);
     }
 
     // ---- Rule 17: DAG cycle detection (DFS three-color marking) ----
@@ -412,14 +410,6 @@ public sealed partial class PlanValidator : IPlanValidator
                     $"Duplicate SubPlan ID '{subPlan.Id}' found in plan.", loc));
             }
         }
-    }
-
-    // ---- Rule 21: CRS consistency pre-check ----
-
-    private static void CrsPreCheck(AnalysisPlan plan, List<ValidationError> warnings)
-    {
-        // CRS consistency check requires source metadata inspection at execution time.
-        // Static validation cannot determine CRS without loading actual data sources.
     }
 
     // ===== Helpers =====

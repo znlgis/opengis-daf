@@ -9,8 +9,6 @@ public sealed record OperatorMetadata
     public IReadOnlyList<string> Tags { get; init; } = [];
     public string Version { get; init; } = null!;
     public string? MinFrameworkVersion { get; init; }
-    public string? CompatibilityNotes { get; init; }
-    public bool SupportsIncremental { get; init; } = false;
     public IReadOnlyList<ParameterDefinition> Parameters { get; init; } = [];
     public InputSchema InputSchema { get; init; } = new();
     public OutputSchema OutputSchema { get; init; } = new();

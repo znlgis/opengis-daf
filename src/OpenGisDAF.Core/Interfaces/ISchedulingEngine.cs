@@ -1,5 +1,3 @@
-using OpenGisDAF.Core;
-
 namespace OpenGisDAF.Core;
 
 public interface ISchedulingEngine

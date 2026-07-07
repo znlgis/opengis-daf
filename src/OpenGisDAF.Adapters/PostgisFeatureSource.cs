@@ -89,6 +89,8 @@ public sealed class PostgisFeatureSource : IFeatureSource
     {
         try
         {
+            if (_baseLayer is IDisposable disposable)
+                disposable.Dispose();
             _lock.Dispose();
         }
         catch (ObjectDisposedException)
@@ -134,7 +136,7 @@ public sealed class PostgisFeatureSource : IFeatureSource
         string? spatialFilterWkt,
         CancellationToken cancellationToken = default)
     {
-        var connectionString = BuildConnectionString();
+        var connectionString = PostgisConnectionHelper.BuildConnectionString(_config, _encryption);
 
         _logger.LogDebug(
             "Loading PostGIS layer '{TableName}' from database '{Database}' on {Host}:{Port}",
@@ -154,30 +156,6 @@ public sealed class PostgisFeatureSource : IFeatureSource
         return layer;
     }
 
-    private string BuildConnectionString()
-    {
-        var password = _encryption.Decrypt(_config.EncryptedPassword ?? string.Empty);
-        var builder = new Npgsql.NpgsqlConnectionStringBuilder
-        {
-            Host = _config.Host,
-            Port = _config.Port,
-            Database = _config.Database,
-            Username = _config.UserName,
-            Password = password
-        };
-
-        return $"PG:host='{EscapePgValue(builder.Host!)}' port={builder.Port} dbname='{EscapePgValue(builder.Database!)}' user='{EscapePgValue(builder.Username!)}' password='{EscapePgValue(password)}'";
-    }
-
-    /// <summary>
-    /// 为 GDAL PG: 连接字符串转义值中的单引号和反斜杠。
-    /// 先转义反斜杠再转义单引号，避免对已转义序列的二次转义。
-    /// </summary>
-    private static string EscapePgValue(string value)
-    {
-        if (string.IsNullOrEmpty(value)) return value;
-        return value.Replace("\\", "\\\\").Replace("'", "\\'");
-    }
 
     private static string BuildSpatialFilterWkt(Envelope envelope)
     {

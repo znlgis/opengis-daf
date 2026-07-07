@@ -50,10 +50,8 @@ public sealed class SinkFactory
         return new PostgisFeatureSink(binding, logger, _encryption);
     }
 
-#pragma warning disable CA1822 // 成员不访问实例数据 — 保留实例方法签名以供未来扩展
     public static async ValueTask DisposeSinkAsync(IFeatureSink sink)
     {
         await sink.DisposeAsync();
     }
-#pragma warning restore CA1822
 }

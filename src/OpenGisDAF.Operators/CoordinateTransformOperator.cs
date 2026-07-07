@@ -50,6 +50,8 @@ public sealed class CoordinateTransformOperator : IOperator
 
     public ValidationResult Validate(AnalysisItem config)
     {
+        ArgumentNullException.ThrowIfNull(config);
+
         var errors = new List<ValidationError>();
 
         if (!config.Inputs.ContainsKey("source"))
@@ -96,6 +98,10 @@ public sealed class CoordinateTransformOperator : IOperator
         ExecutionContext context,
         CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(inputs);
+        ArgumentNullException.ThrowIfNull(parameters);
+        ArgumentNullException.ThrowIfNull(context);
+
         var sw = Stopwatch.StartNew();
         var logs = new List<ExecutionLogEntry>();
 

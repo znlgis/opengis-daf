@@ -15,12 +15,13 @@ namespace OpenGisDAF.IntegrationTests;
 /// </summary>
 public sealed class UnitFixes
 {
-    private static ExecutionContext NewContext() => new()
-    {
-        PlanId = "test-plan",
-        ExecutionId = "test-exec",
-        Logger = NullLogger.Instance,
-    };
+    private static ExecutionContext NewContext() => new(
+        planId: "test-plan",
+        executionId: "test-exec",
+        resultCache: null!,
+        logger: NullLogger.Instance,
+        services: null!,
+        statistics: new PlanExecutionStatistics());
 
     private static SimpleFeature Feature(string id, params (string Key, object? Value)[] attrs)
     {

@@ -11,6 +11,7 @@ public sealed class InMemoryFeatureSource : IFeatureSource
     private readonly FeatureSourceMetadata _metadata;
     private readonly ILogger<InMemoryFeatureSource>? _logger;
     private Envelope? _cachedBoundingBox;
+    private ISpatialReference? _cachedSpatialReference;
 
     public InMemoryFeatureSource(IEnumerable<IFeature> features, string? sourceId = null, ILogger<InMemoryFeatureSource>? logger = null)
     {
@@ -27,7 +28,7 @@ public sealed class InMemoryFeatureSource : IFeatureSource
 
     public FeatureSourceMetadata Metadata => _metadata;
     public Envelope BoundingBox => _cachedBoundingBox ??= CalculateBoundingBox();
-    public ISpatialReference SpatialReference => new Utilities.SpatialReference(0, "Unknown");
+    public ISpatialReference SpatialReference => _cachedSpatialReference ??= new Utilities.SpatialReference(0, "Unknown");
 
     public Task<long> GetFeatureCountAsync() => Task.FromResult((long)_features.Count);
 
@@ -61,6 +62,7 @@ public sealed class InMemoryFeatureSource : IFeatureSource
     {
         _features.Clear();
         _cachedBoundingBox = null;
+        _cachedSpatialReference = null;
         return ValueTask.CompletedTask;
     }
 

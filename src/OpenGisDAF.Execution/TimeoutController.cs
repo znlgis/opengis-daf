@@ -10,6 +10,9 @@ public static class TimeoutController
         TimeSpan timeout,
         CancellationToken externalCancellationToken = default)
     {
+        if (timeout <= TimeSpan.Zero)
+            throw new ArgumentOutOfRangeException(nameof(timeout), "Timeout must be a positive duration.");
+
         var sw = Stopwatch.StartNew();
         using var timeoutCts = new CancellationTokenSource(timeout);
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(

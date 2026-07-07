@@ -150,7 +150,6 @@ public sealed class FieldCalculator : IOperator
                 return OperatorHelper.Fail("缺少输入 'source'", sw.Elapsed, logs);
             }
 
-            var fieldRefs = ExtractFieldRefs(expression);
             var results = new List<IFeature>();
             var count = 0;
 
@@ -161,7 +160,7 @@ public sealed class FieldCalculator : IOperator
                 object? computed;
                 try
                 {
-                    computed = ComputeExpression(expression, feature.Attributes, fieldRefs, fieldType);
+                    computed = ComputeExpression(expression, feature.Attributes, fieldType);
                 }
                 catch (Exception ex)
                 {
@@ -217,29 +216,20 @@ public sealed class FieldCalculator : IOperator
         }
     }
 
-    private static HashSet<string> ExtractFieldRefs(string expression)
-    {
-        var refs = new HashSet<string>();
-        foreach (Match m in FieldRefRegex.Matches(expression))
-            refs.Add(m.Groups[1].Value);
-        return refs;
-    }
-
     private object? ComputeExpression(
         string expression,
         IReadOnlyDictionary<string, object?> attrs,
-        HashSet<string> fieldRefs,
         FieldType targetType)
     {
         // String literal: "hello" (resolve {field} references inside)
         if (expression.Length >= 2 && expression[0] == '"' && expression[^1] == '"')
         {
-            var inner = expression[1..^1];
-            foreach (var refName in fieldRefs)
+            var inner = FieldRefRegex.Replace(expression[1..^1], match =>
             {
+                var refName = match.Groups[1].Value;
                 var raw = attrs.TryGetValue(refName, out var val) ? val : null;
-                inner = inner.Replace($"{{{refName}}}", FormatValue(raw));
-            }
+                return FormatValue(raw);
+            });
             return SafeCoerceTo(inner, targetType);
         }
 
@@ -254,12 +244,12 @@ public sealed class FieldCalculator : IOperator
         }
 
         // Substitute field references
-        var substituted = expression;
-        foreach (var refName in fieldRefs)
+        var substituted = FieldRefRegex.Replace(expression, match =>
         {
+            var refName = match.Groups[1].Value;
             var raw = attrs.TryGetValue(refName, out var val) ? val : null;
-            substituted = substituted.Replace($"{{{refName}}}", FormatValue(raw));
-        }
+            return FormatValue(raw);
+        });
 
         // Try numeric literal after substitution
         if (double.TryParse(substituted, NumberStyles.Float, CultureInfo.InvariantCulture, out var num))

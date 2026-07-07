@@ -1,3 +1,4 @@
+using System.Reflection;
 using System.Text.Json;
 using OpenGisDAF.Core;
 using OpenGisDAF.Infrastructure;
@@ -10,7 +11,6 @@ public sealed class QualityReportGenerator
         IReadOnlyList<IssueRecord> allIssues,
         IReadOnlyDictionary<string, List<IssueRecord>> issuesByItem,
         AnalysisPlan plan,
-        string executionId,
         QualityReportConfig? config = null)
     {
         var score = QualityCalculator.CalculateScore(issuesByItem, config);
@@ -27,7 +27,7 @@ public sealed class QualityReportGenerator
             {
                 PlanId = plan.Id,
                 PlanVersion = plan.Version,
-                OperatorVersion = "1.0.0",
+                OperatorVersion = typeof(QualityReportGenerator).Assembly.GetName().Version?.ToString() ?? "1.0.0",
                 ExecutionTime = DateTimeOffset.UtcNow
             }
         };

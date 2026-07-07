@@ -45,6 +45,8 @@ public sealed class IntersectCheckOperator : IOperator
 
     public ValidationResult Validate(AnalysisItem config)
     {
+        ArgumentNullException.ThrowIfNull(config);
+
         var errors = new List<ValidationError>();
         var warnings = new List<ValidationError>();
 
@@ -93,6 +95,10 @@ public sealed class IntersectCheckOperator : IOperator
         ExecutionContext context,
         CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(inputs);
+        ArgumentNullException.ThrowIfNull(parameters);
+        ArgumentNullException.ThrowIfNull(context);
+
         var sw = Stopwatch.StartNew();
         var logs = new List<ExecutionLogEntry>();
 

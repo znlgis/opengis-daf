@@ -1,6 +1,6 @@
 namespace OpenGisDAF.Core;
 
-public enum ExecutionStatus { Pending, Queued, Executing, Success, Failed, Canceled, Retrying }
+public enum ExecutionStatus { Success, Failed, Canceled }
 
 public enum BindingType { External, Upstream, SubPlan }
 
@@ -16,4 +16,4 @@ public enum LogGranularity { Plan, Item, Feature }
 
 public enum FailurePolicy { StopOnAny, ContinueIndependent }
 
-public enum OutputAdapterType { ConsoleWriter, GeoJsonWriter, ShapefileWriter, PostGISWriter, CsvWriter, GeoPackageWriter }
+public enum OutputAdapterType { ConsoleWriter, GeoJsonWriter, ShapefileWriter, PostGISWriter }

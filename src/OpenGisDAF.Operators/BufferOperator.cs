@@ -103,6 +103,10 @@ public sealed class BufferOperator : IOperator
         ExecutionContext context,
         CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(inputs);
+        ArgumentNullException.ThrowIfNull(parameters);
+        ArgumentNullException.ThrowIfNull(context);
+
         var sw = Stopwatch.StartNew();
 
         try

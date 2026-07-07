@@ -34,9 +34,10 @@ public sealed class TopologicalSorter
         while (queue.Count > 0)
         {
             var node = queue.Dequeue();
-            ordered.Add(itemMap[node]);
+            if (itemMap.TryGetValue(node, out var item))
+                ordered.Add(item);
 
-            foreach (var neighbor in adj[node])
+            foreach (var neighbor in adj.GetValueOrDefault(node, []))
             {
                 inDegree[neighbor]--;
                 if (inDegree[neighbor] == 0)

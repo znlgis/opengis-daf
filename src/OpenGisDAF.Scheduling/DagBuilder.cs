@@ -27,7 +27,7 @@ public sealed class DagBuilder
                             $"分析项 '{item.Id}' 的上游依赖 '{binding.SourceId}' 不在方案中");
                     }
                     upstreamNeighbors.Add(item.Id);
-                    inDegree[item.Id] = inDegree.GetValueOrDefault(item.Id, 0) + 1;
+                    inDegree[item.Id]++;
                 }
 
                 if (binding.Type == BindingType.SubPlan)

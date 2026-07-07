@@ -48,14 +48,21 @@ public sealed class ResultCache : IResultCache
         }
     }
 
-    public Task InvalidateAsync(string cacheKeyPrefix)
+    public async Task InvalidateAsync(string cacheKeyPrefix)
     {
-        foreach (var key in _cache.Keys)
+        var keysToRemove = new List<string>();
+        foreach (var kvp in _cache)
         {
-            if (key.StartsWith(cacheKeyPrefix, StringComparison.OrdinalIgnoreCase))
-                _cache.TryRemove(key, out _);
+            if (kvp.Key.StartsWith(cacheKeyPrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                keysToRemove.Add(kvp.Key);
+                if (kvp.Value.Value is IAsyncDisposable asyncDisposable)
+                    await asyncDisposable.DisposeAsync();
+            }
         }
-        return Task.CompletedTask;
+
+        foreach (var key in keysToRemove)
+            _cache.TryRemove(key, out _);
     }
 
     public async Task ClearAsync(CancellationToken cancellationToken = default)
@@ -69,10 +76,6 @@ public sealed class ResultCache : IResultCache
         }
 
         _cache.Clear();
-
-        foreach (var keyLock in _keyLocks.Values)
-            keyLock.Dispose();
-        _keyLocks.Clear();
     }
 
     private void EvictIfNeeded()
@@ -81,16 +84,26 @@ public sealed class ResultCache : IResultCache
             return;
 
         var now = DateTimeOffset.UtcNow;
-        var expiredKeys = new List<string>();
 
+        // First pass: remove expired entries
+        var toRemove = new List<string>();
         foreach (var kvp in _cache)
         {
             if (now - kvp.Value.CreatedAt >= _defaultTtl)
-                expiredKeys.Add(kvp.Key);
+                toRemove.Add(kvp.Key);
         }
 
-        foreach (var key in expiredKeys)
+        foreach (var key in toRemove)
             _cache.TryRemove(key, out _);
+
+        // Second pass: if still over limit, evict oldest entries regardless of TTL
+        if (_cache.Count > MaxEntries)
+        {
+            var sorted = _cache.OrderBy(kvp => kvp.Value.CreatedAt).ToList();
+            var excess = _cache.Count - MaxEntries;
+            for (var i = 0; i < excess; i++)
+                _cache.TryRemove(sorted[i].Key, out _);
+        }
     }
 
     private sealed record CacheEntry(object Value, DateTimeOffset CreatedAt);

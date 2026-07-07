@@ -1,6 +1,5 @@
 using System.Text;
 using Microsoft.Extensions.Logging;
-using OpenGIS.Utils.Engine.Enums;
 using OpenGIS.Utils.Engine.Model.Layer;
 using OpenGIS.Utils.Engine.Util;
 using OpenGisDAF.Adapters.Utilities;
@@ -86,7 +85,7 @@ public sealed class ShapefileFeatureSink : IFeatureSink
         var layer = new OguLayer
         {
             Name = schema.Description ?? Path.GetFileNameWithoutExtension(_binding.TargetPath),
-            GeometryType = MapGeometryType(schema.ProducedGeometryType)
+            GeometryType = GeometryTypeMapper.ToOguGeometryType(schema.ProducedGeometryType)
         };
 
         foreach (var fieldDef in schema.ProducedFields)
@@ -94,7 +93,7 @@ public sealed class ShapefileFeatureSink : IFeatureSink
             layer.Fields.Add(new OguField
             {
                 Name = fieldDef.Name,
-                DataType = MapFieldType(fieldDef.Type),
+                DataType = FieldTypeMapper.ToFieldDataType(fieldDef.Type),
                 IsNullable = !fieldDef.Required
             });
         }
@@ -136,32 +135,5 @@ public sealed class ShapefileFeatureSink : IFeatureSink
         }
     }
 
-    private static OpenGIS.Utils.Engine.Enums.GeometryType MapGeometryType(Core.GeometryType? dafType)
-    {
-        return dafType switch
-        {
-            Core.GeometryType.Point => OpenGIS.Utils.Engine.Enums.GeometryType.POINT,
-            Core.GeometryType.MultiPoint => OpenGIS.Utils.Engine.Enums.GeometryType.MULTIPOINT,
-            Core.GeometryType.LineString => OpenGIS.Utils.Engine.Enums.GeometryType.LINESTRING,
-            Core.GeometryType.MultiLineString => OpenGIS.Utils.Engine.Enums.GeometryType.MULTILINESTRING,
-            Core.GeometryType.Polygon => OpenGIS.Utils.Engine.Enums.GeometryType.POLYGON,
-            Core.GeometryType.MultiPolygon => OpenGIS.Utils.Engine.Enums.GeometryType.MULTIPOLYGON,
-            Core.GeometryType.GeometryCollection => OpenGIS.Utils.Engine.Enums.GeometryType.GEOMETRYCOLLECTION,
-            _ => OpenGIS.Utils.Engine.Enums.GeometryType.UNKNOWN
-        };
-    }
 
-    private static FieldDataType MapFieldType(Core.FieldType dafType)
-    {
-        return dafType switch
-        {
-            Core.FieldType.String => FieldDataType.STRING,
-            Core.FieldType.Integer => FieldDataType.INTEGER,
-            Core.FieldType.Double => FieldDataType.DOUBLE,
-            Core.FieldType.DateTime => FieldDataType.DATETIME,
-            Core.FieldType.Boolean => FieldDataType.BOOLEAN,
-            Core.FieldType.Geometry => FieldDataType.UNKNOWN,
-            _ => FieldDataType.UNKNOWN
-        };
-    }
 }

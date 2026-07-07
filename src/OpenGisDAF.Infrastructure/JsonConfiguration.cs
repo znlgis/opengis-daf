@@ -12,11 +12,11 @@ public static class JsonConfiguration
     {
         DefaultOptions = new JsonSerializerOptions
         {
+            TypeInfoResolver = new DefaultJsonTypeInfoResolver(),
             PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
             PropertyNameCaseInsensitive = true,
             WriteIndented = true,
             MaxDepth = 32,
-            TypeInfoResolver = new DefaultJsonTypeInfoResolver(),
             Converters =
             {
                 new JsonStringEnumConverter(JsonNamingPolicy.CamelCase)

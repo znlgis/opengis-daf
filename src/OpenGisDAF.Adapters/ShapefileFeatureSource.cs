@@ -82,6 +82,8 @@ public sealed class ShapefileFeatureSource : IFeatureSource
 
     public ValueTask DisposeAsync()
     {
+        if (_layer.IsValueCreated && _layer.Value is IDisposable disposable)
+            disposable.Dispose();
         _cachedMetadata = null;
         _cachedBoundingBox = null;
         _cachedSpatialReference = null;

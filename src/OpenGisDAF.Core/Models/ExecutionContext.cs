@@ -5,7 +5,8 @@ namespace OpenGisDAF.Core;
 public sealed class ExecutionContext
 {
     public ExecutionContext(string planId, string executionId, IResultCache resultCache,
-        ILogger logger, IServiceProvider services, PlanExecutionStatistics statistics)
+        ILogger logger, IServiceProvider services, PlanExecutionStatistics statistics,
+        string? currentItemId = null)
     {
         PlanId = planId;
         ExecutionId = executionId;
@@ -13,6 +14,7 @@ public sealed class ExecutionContext
         Logger = logger;
         Services = services;
         Statistics = statistics;
+        CurrentItemId = currentItemId ?? string.Empty;
     }
 
     public string PlanId { get; init; } = null!;
@@ -21,8 +23,6 @@ public sealed class ExecutionContext
     public ILogger Logger { get; init; } = null!;
     public IServiceProvider Services { get; init; } = null!;
     public PlanExecutionStatistics Statistics { get; init; } = null!;
-    public string CurrentItemId { get; set; } = string.Empty;
+    public string CurrentItemId { get; init; } = string.Empty;
 
-    // 保留无参数构造器以支持 System.Text.Json 反序列化
-    public ExecutionContext() { }
 }

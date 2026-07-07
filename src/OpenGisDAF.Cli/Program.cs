@@ -1,4 +1,4 @@
 ﻿using OpenGisDAF.Cli;
 
-var app = new DafApplication();
+await using var app = new DafApplication();
 return await app.RunAsync(args);

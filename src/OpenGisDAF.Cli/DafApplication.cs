@@ -11,7 +11,7 @@ using System.Globalization;
 
 namespace OpenGisDAF.Cli;
 
-public sealed class DafApplication
+public sealed class DafApplication : IAsyncDisposable
 {
     private readonly IServiceProvider _services;
 
@@ -39,6 +39,14 @@ public sealed class DafApplication
         });
 
         _services = builder.Build();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_services is IAsyncDisposable asyncDisposable)
+            await asyncDisposable.DisposeAsync();
+        else if (_services is IDisposable disposable)
+            disposable.Dispose();
     }
 
     public async Task<int> RunAsync(string[] args)
@@ -84,6 +92,12 @@ public sealed class DafApplication
         var serializer = _services.GetRequiredService<IPlanSerializer>();
         var plan = serializer.Deserialize(json);
 
+        if (plan.Name is null || plan.Id is null)
+        {
+            Console.Error.WriteLine("方案文件无效: 缺少必要字段 (name/id)");
+            return 1;
+        }
+
         var validator = _services.GetRequiredService<IPlanValidator>();
         var operatorPool = _services.GetRequiredService<IOperatorPool>();
         var validation = await validator.ValidateAsync(plan, operatorPool);
@@ -101,9 +115,7 @@ public sealed class DafApplication
         var scheduler = _services.GetRequiredService<ISchedulingEngine>();
         var logger = _services.GetRequiredService<ILogger<DafApplication>>();
 
-#pragma warning disable CA1848, CA1873
         logger.LogInformation("开始执行方案: {PlanName} (ID: {PlanId})", plan.Name, plan.Id);
-#pragma warning restore CA1848, CA1873
 
         using var cts = new CancellationTokenSource();
         ConsoleCancelEventHandler handler = (_, e) =>
@@ -157,7 +169,7 @@ public sealed class DafApplication
             .ToDictionary(g => g.Key, g => g.ToList());
 
         var report = QualityReportGenerator.Generate(
-            stats.Issues, issuesByItem, plan, stats.ExecutionId);
+            stats.Issues, issuesByItem, plan);
 
         await QualityReportGenerator.SaveAsync(report, reportPath);
         Console.WriteLine($"质检报告已保存: {reportPath}");
@@ -176,6 +188,12 @@ public sealed class DafApplication
         var json = await File.ReadAllTextAsync(planPath);
         var serializer = _services.GetRequiredService<IPlanSerializer>();
         var plan = serializer.Deserialize(json);
+
+        if (plan.Name is null || plan.Id is null)
+        {
+            Console.Error.WriteLine("方案文件无效: 缺少必要字段 (name/id)");
+            return 1;
+        }
 
         var validator = _services.GetRequiredService<IPlanValidator>();
         var operatorPool = _services.GetRequiredService<IOperatorPool>();
@@ -320,7 +338,7 @@ public sealed class DafApplication
 
         var plan = new AnalysisPlan
         {
-            Id = Guid.NewGuid().ToString("N")[..8],
+            Id = Guid.NewGuid().ToString("N"),
             Name = name,
             Version = "1.0.0",
             Group = group ?? "default"
@@ -383,7 +401,7 @@ public sealed class DafApplication
 
         var newPlan = new AnalysisPlan
         {
-            Id = Guid.NewGuid().ToString("N")[..8],
+            Id = Guid.NewGuid().ToString("N"),
             Name = targetParts[1],
             Version = "1.0.0",
             Group = targetParts[0],

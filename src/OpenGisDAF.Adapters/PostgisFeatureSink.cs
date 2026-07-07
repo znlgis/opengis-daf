@@ -85,7 +85,7 @@ public sealed class PostgisFeatureSink : IFeatureSink
         var layer = new OguLayer
         {
             Name = _binding.TargetPath,
-            GeometryType = MapGeometryType(_schema?.ProducedGeometryType),
+            GeometryType = GeometryTypeMapper.ToOguGeometryType(_schema?.ProducedGeometryType),
             Fields = BuildFieldDefinitions()
         };
 
@@ -94,7 +94,7 @@ public sealed class PostgisFeatureSink : IFeatureSink
             layer.Features.Add(feature);
         }
 
-        var connectionString = BuildConnectionString(_binding.ConnectionConfig);
+        var connectionString = PostgisConnectionHelper.BuildConnectionString(_binding.ConnectionConfig, _encryption);
 
         _logger.LogInformation(
             "Writing {FeatureCount} features to PostGIS table '{TableName}'",
@@ -119,30 +119,6 @@ public sealed class PostgisFeatureSink : IFeatureSink
         return ValueTask.CompletedTask;
     }
 
-    private string BuildConnectionString(ConnectionConfig config)
-    {
-        var password = _encryption.Decrypt(config.EncryptedPassword ?? string.Empty);
-        var builder = new Npgsql.NpgsqlConnectionStringBuilder
-        {
-            Host = config.Host,
-            Port = config.Port,
-            Database = config.Database,
-            Username = config.UserName,
-            Password = password
-        };
-
-        return $"PG:host='{EscapePgValue(builder.Host!)}' port={builder.Port} dbname='{EscapePgValue(builder.Database!)}' user='{EscapePgValue(builder.Username!)}' password='{EscapePgValue(password)}'";
-    }
-
-    /// <summary>
-    /// 为 GDAL PG: 连接字符串转义值中的单引号和反斜杠。
-    /// 先转义反斜杠再转义单引号，避免对已转义序列的二次转义。
-    /// </summary>
-    private static string EscapePgValue(string value)
-    {
-        if (string.IsNullOrEmpty(value)) return value;
-        return value.Replace("\\", "\\\\").Replace("'", "\\'");
-    }
 
     private IList<OguField> BuildFieldDefinitions()
     {
@@ -157,7 +133,7 @@ public sealed class PostgisFeatureSink : IFeatureSink
             fields.Add(new OguField
             {
                 Name = fieldDef.Name,
-                DataType = MapFieldType(fieldDef.Type),
+                DataType = FieldTypeMapper.ToFieldDataType(fieldDef.Type),
                 IsNullable = !fieldDef.Required
             });
         }
@@ -165,26 +141,4 @@ public sealed class PostgisFeatureSink : IFeatureSink
         return fields;
     }
 
-    private static FieldDataType MapFieldType(FieldType type) => type switch
-    {
-        FieldType.String => FieldDataType.STRING,
-        FieldType.Integer => FieldDataType.INTEGER,
-        FieldType.Double => FieldDataType.DOUBLE,
-        FieldType.DateTime => FieldDataType.DATETIME,
-        FieldType.Boolean => FieldDataType.BOOLEAN,
-        FieldType.Geometry => FieldDataType.BINARY,
-        _ => FieldDataType.STRING
-    };
-
-    private static OpenGIS.Utils.Engine.Enums.GeometryType MapGeometryType(Core.GeometryType? type) => type switch
-    {
-        Core.GeometryType.Point => OpenGIS.Utils.Engine.Enums.GeometryType.POINT,
-        Core.GeometryType.MultiPoint => OpenGIS.Utils.Engine.Enums.GeometryType.MULTIPOINT,
-        Core.GeometryType.LineString => OpenGIS.Utils.Engine.Enums.GeometryType.LINESTRING,
-        Core.GeometryType.MultiLineString => OpenGIS.Utils.Engine.Enums.GeometryType.MULTILINESTRING,
-        Core.GeometryType.Polygon => OpenGIS.Utils.Engine.Enums.GeometryType.POLYGON,
-        Core.GeometryType.MultiPolygon => OpenGIS.Utils.Engine.Enums.GeometryType.MULTIPOLYGON,
-        Core.GeometryType.GeometryCollection => OpenGIS.Utils.Engine.Enums.GeometryType.GEOMETRYCOLLECTION,
-        _ => OpenGIS.Utils.Engine.Enums.GeometryType.UNKNOWN
-    };
 }
