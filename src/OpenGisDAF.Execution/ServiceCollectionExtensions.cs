@@ -11,7 +11,7 @@ public static class ServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
 
         services.AddSingleton<IResultCache, ResultCache>();
-        services.AddSingleton<IConnectionEncryption, DpapiConnectionEncryption>();
+        services.AddSingleton<IConnectionEncryption>(_ => ConnectionEncryptionFactory.Create());
         services.AddSingleton<SourceFactory>();
         services.AddSingleton<SinkFactory>();
         services.AddSingleton<IExecutionEngine, ExecutionEngine>();

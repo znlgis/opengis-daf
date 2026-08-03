@@ -3,7 +3,9 @@ using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using NetTopologySuite.Geometries;
 using OpenGisDAF.Adapters;
+using OpenGisDAF.Adapters.Utilities;
 using OpenGisDAF.Core;
+using OpenGisDAF.Execution;
 using OpenGisDAF.Operators;
 using OpenGisDAF.PlanManagement;
 using ExecutionContext = OpenGisDAF.Core.ExecutionContext;
@@ -108,6 +110,204 @@ public sealed class UnitFixes
         var grouped = pool.GetAllGroupedByCategory();
         grouped["shared_category"].Should().HaveCount(200);
         pool.GetByCategory("shared_category").Should().HaveCount(200);
+    }
+
+    [Fact]
+    public void AesConnectionEncryption_RoundTrips_WithTempKeyFile()
+    {
+        var keyPath = Path.Combine(Path.GetTempPath(), $"opengis-daf-test-{Guid.NewGuid():N}.key");
+        try
+        {
+            var enc = new AesConnectionEncryption(keyPath);
+            const string secret = "Host=localhost;Username=postgres;****** w0rd;";
+
+            var cipher = enc.Encrypt(secret);
+            cipher.Should().NotBe(secret);
+
+            // A separate instance reading the same key file must decrypt successfully.
+            var dec = new AesConnectionEncryption(keyPath);
+            dec.Decrypt(cipher).Should().Be(secret);
+        }
+        finally
+        {
+            if (File.Exists(keyPath))
+                File.Delete(keyPath);
+        }
+    }
+
+    [Fact]
+    public void AesConnectionEncryption_EmptyString_RoundTripsToEmpty()
+    {
+        var keyPath = Path.Combine(Path.GetTempPath(), $"opengis-daf-test-{Guid.NewGuid():N}.key");
+        try
+        {
+            var enc = new AesConnectionEncryption(keyPath);
+            enc.Encrypt(string.Empty).Should().BeEmpty();
+            enc.Decrypt(string.Empty).Should().BeEmpty();
+        }
+        finally
+        {
+            if (File.Exists(keyPath))
+                File.Delete(keyPath);
+        }
+    }
+
+    [Fact]
+    public void AesConnectionEncryption_TamperedCipher_FailsToDecrypt()
+    {
+        var keyPath = Path.Combine(Path.GetTempPath(), $"opengis-daf-test-{Guid.NewGuid():N}.key");
+        try
+        {
+            var enc = new AesConnectionEncryption(keyPath);
+            var cipher = Convert.FromBase64String(enc.Encrypt("secret"));
+            cipher[^1] ^= 0xFF; // flip bits in the final ciphertext byte
+
+            var act = () => enc.Decrypt(Convert.ToBase64String(cipher));
+
+            act.Should().Throw<System.Security.Cryptography.CryptographicException>();
+        }
+        finally
+        {
+            if (File.Exists(keyPath))
+                File.Delete(keyPath);
+        }
+    }
+
+    [Fact]
+    public async Task ResultCache_ClearAsync_DisposesValuesAndAllowsRecompute()
+    {
+        // 回归: 淘汰/清理缓存时未释放 IAsyncDisposable，导致资源泄漏。
+        var cache = new ResultCache();
+        var tracker = new TrackingAsyncDisposable();
+
+        var computeCount = 0;
+        Task<TrackingAsyncDisposable> Factory()
+        {
+            computeCount++;
+            return Task.FromResult(tracker);
+        }
+
+        (await cache.GetOrComputeAsync("k", Factory)).Should().BeSameAs(tracker);
+        await cache.GetOrComputeAsync("k", Factory); // served from cache
+        computeCount.Should().Be(1);
+
+        await cache.ClearAsync(TestContext.Current.CancellationToken);
+        tracker.DisposeCount.Should().Be(1);
+
+        // After clearing, the value must be recomputed.
+        await cache.GetOrComputeAsync("k", Factory);
+        computeCount.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task ResultCache_InvalidateAsync_DisposesMatchingValues()
+    {
+        var cache = new ResultCache();
+        var tracker = new TrackingAsyncDisposable();
+
+        await cache.GetOrComputeAsync("prefix:key", () => Task.FromResult(tracker));
+        await cache.InvalidateAsync("prefix:");
+
+        tracker.DisposeCount.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task ExecutionEngine_OperatorThatThrows_IsContainedAsFailedResult()
+    {
+        // 回归: 算子抛出未处理异常会中断整个计划，而非按失败策略处理。
+        var pool = new OperatorPool();
+        pool.Register(new ThrowingOperator("boom"));
+        var engine = new ExecutionEngine(pool, new ResultCache(), NullLogger<ExecutionEngine>.Instance);
+
+        var item = new AnalysisItem("item-1", "boom",
+            new OutputBinding(OutputAdapterType.ConsoleWriter, "out"));
+
+        var result = await engine.ExecuteItemAsync(
+            item,
+            new Dictionary<string, IFeatureSource>(),
+            NewContext(),
+            TestContext.Current.CancellationToken);
+
+        result.Status.Should().Be(ExecutionStatus.Failed);
+        result.ErrorCode.Should().Be(ErrorCode.RtUnexpected);
+    }
+
+    [Fact]
+    public async Task ExecutionEngine_OperatorCancellation_PropagatesInsteadOfBeingSwallowed()
+    {
+        var pool = new OperatorPool();
+        pool.Register(new CancellingOperator("cancel"));
+        var engine = new ExecutionEngine(pool, new ResultCache(), NullLogger<ExecutionEngine>.Instance);
+
+        var item = new AnalysisItem("item-1", "cancel",
+            new OutputBinding(OutputAdapterType.ConsoleWriter, "out"));
+
+        var act = async () => await engine.ExecuteItemAsync(
+            item,
+            new Dictionary<string, IFeatureSource>(),
+            NewContext(),
+            TestContext.Current.CancellationToken);
+
+        await act.Should().ThrowAsync<OperationCanceledException>();
+    }
+
+    private sealed class TrackingAsyncDisposable : IAsyncDisposable
+    {
+        public int DisposeCount { get; private set; }
+
+        public ValueTask DisposeAsync()
+        {
+            DisposeCount++;
+            return ValueTask.CompletedTask;
+        }
+    }
+
+    private sealed class ThrowingOperator : IOperator
+    {
+        public ThrowingOperator(string id) =>
+            Metadata = new OperatorMetadata
+            {
+                Id = id,
+                Name = id,
+                Category = "test",
+                Version = "1.0.0",
+            };
+
+        public OperatorMetadata Metadata { get; }
+
+        public ValidationResult Validate(AnalysisItem config) =>
+            new() { Errors = [], Warnings = [] };
+
+        public Task<ExecutionResult> ExecuteAsync(
+            IReadOnlyDictionary<string, IFeatureSource> inputs,
+            IReadOnlyDictionary<string, object?> parameters,
+            ExecutionContext context,
+            CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("boom");
+    }
+
+    private sealed class CancellingOperator : IOperator
+    {
+        public CancellingOperator(string id) =>
+            Metadata = new OperatorMetadata
+            {
+                Id = id,
+                Name = id,
+                Category = "test",
+                Version = "1.0.0",
+            };
+
+        public OperatorMetadata Metadata { get; }
+
+        public ValidationResult Validate(AnalysisItem config) =>
+            new() { Errors = [], Warnings = [] };
+
+        public Task<ExecutionResult> ExecuteAsync(
+            IReadOnlyDictionary<string, IFeatureSource> inputs,
+            IReadOnlyDictionary<string, object?> parameters,
+            ExecutionContext context,
+            CancellationToken cancellationToken) =>
+            throw new OperationCanceledException();
     }
 
     private sealed class FakeOperator : IOperator
