@@ -68,8 +68,17 @@ public sealed class PlanRepository : IPlanRepository
         var json = _serializer.Serialize(plan);
 
         var tmpPath = filePath + ".tmp";
-        await File.WriteAllTextAsync(tmpPath, json, cancellationToken);
-        File.Move(tmpPath, filePath, overwrite: true);
+        try
+        {
+            await File.WriteAllTextAsync(tmpPath, json, cancellationToken);
+            File.Move(tmpPath, filePath, overwrite: true);
+        }
+        catch
+        {
+            try { if (File.Exists(tmpPath)) File.Delete(tmpPath); } catch { /* best-effort cleanup */ }
+            throw;
+        }
+
         _logger?.LogInformation("Plan {PlanId} saved to {FilePath}", plan.Id, filePath);
     }
 

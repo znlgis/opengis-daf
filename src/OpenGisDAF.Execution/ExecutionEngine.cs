@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using OpenGisDAF.Core;
 using ExecutionContext = OpenGisDAF.Core.ExecutionContext;
@@ -40,27 +41,49 @@ public sealed partial class ExecutionEngine : IExecutionEngine
 
         var policy = item.ExecutionPolicy;
 
-        ExecutionResult result;
-        if (policy.MaxRetries > 0)
+        var sw = Stopwatch.StartNew();
+        try
         {
-            result = await ExecuteWithRetryAsync(op, item, resolvedInputs, context, policy, cancellationToken);
+            ExecutionResult result;
+            if (policy.MaxRetries > 0)
+            {
+                result = await ExecuteWithRetryAsync(op, item, resolvedInputs, context, policy, cancellationToken);
+            }
+            else
+            {
+                result = await TimeoutController.ExecuteWithTimeoutAsync(
+                    async ct =>
+                    {
+                        var parameters = new Dictionary<string, object?>(item.Parameters);
+                        if (policy.QcMode)
+                            parameters["_qc_mode"] = true;
+
+                        return await op.ExecuteAsync(resolvedInputs, parameters, context, ct);
+                    },
+                    policy.Timeout,
+                    cancellationToken);
+            }
+
+            return result;
         }
-        else
+        catch (OperationCanceledException)
         {
-            result = await TimeoutController.ExecuteWithTimeoutAsync(
-                async ct =>
-                {
-                    var parameters = new Dictionary<string, object?>(item.Parameters);
-                    if (policy.QcMode)
-                        parameters["_qc_mode"] = true;
-
-                    return await op.ExecuteAsync(resolvedInputs, parameters, context, ct);
-                },
-                policy.Timeout,
-                cancellationToken);
+            // Preserve cancellation semantics — handled by the scheduler.
+            throw;
         }
-
-        return result;
+        catch (Exception ex)
+        {
+            // Contain unexpected operator failures as a failed item so the failure
+            // policy governs the run instead of aborting the entire plan.
+            Log.ItemExecutionCrashed(_logger, item.OperatorId, ex);
+            return new ExecutionResult
+            {
+                Status = ExecutionStatus.Failed,
+                ErrorCode = ErrorCode.RtUnexpected,
+                ErrorMessage = $"算子 '{item.OperatorId}' 执行时发生未处理异常: {ex.Message}",
+                Elapsed = sw.Elapsed
+            };
+        }
     }
 
     private async Task<ExecutionResult> ExecuteWithRetryAsync(
@@ -160,5 +183,9 @@ public sealed partial class ExecutionEngine : IExecutionEngine
         [LoggerMessage(Level = LogLevel.Error,
             Message = "算子执行异常")]
         public static partial void OperatorExecutionError(ILogger logger, Exception ex);
+
+        [LoggerMessage(Level = LogLevel.Error,
+            Message = "算子 {OperatorId} 抛出未处理异常，已作为失败项处理")]
+        public static partial void ItemExecutionCrashed(ILogger logger, string operatorId, Exception ex);
     }
 }

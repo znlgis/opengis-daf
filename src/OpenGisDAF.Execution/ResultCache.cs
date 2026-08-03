@@ -38,7 +38,7 @@ public sealed class ResultCache : IResultCache
             _cache[cacheKey] = new CacheEntry(value!, DateTimeOffset.UtcNow);
 
             // Enforce max entries by evicting oldest expired entries
-            EvictIfNeeded();
+            await EvictIfNeededAsync();
 
             return value;
         }
@@ -76,9 +76,15 @@ public sealed class ResultCache : IResultCache
         }
 
         _cache.Clear();
+
+        // Release per-key locks. Cache keys embed a per-execution id, so without
+        // this the semaphore dictionary would grow unbounded across plan runs.
+        foreach (var keyLock in _keyLocks.Values)
+            keyLock.Dispose();
+        _keyLocks.Clear();
     }
 
-    private void EvictIfNeeded()
+    private async Task EvictIfNeededAsync()
     {
         if (_cache.Count <= MaxEntries)
             return;
@@ -94,7 +100,10 @@ public sealed class ResultCache : IResultCache
         }
 
         foreach (var key in toRemove)
-            _cache.TryRemove(key, out _);
+        {
+            if (_cache.TryRemove(key, out var removed) && removed.Value is IAsyncDisposable disposable)
+                await disposable.DisposeAsync();
+        }
 
         // Second pass: if still over limit, evict oldest entries regardless of TTL
         if (_cache.Count > MaxEntries)
@@ -102,7 +111,10 @@ public sealed class ResultCache : IResultCache
             var sorted = _cache.OrderBy(kvp => kvp.Value.CreatedAt).ToList();
             var excess = _cache.Count - MaxEntries;
             for (var i = 0; i < excess; i++)
-                _cache.TryRemove(sorted[i].Key, out _);
+            {
+                if (_cache.TryRemove(sorted[i].Key, out var removed) && removed.Value is IAsyncDisposable disposable)
+                    await disposable.DisposeAsync();
+            }
         }
     }
 

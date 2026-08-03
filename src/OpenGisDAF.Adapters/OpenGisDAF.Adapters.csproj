@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <NoWarn>CA1873;CA1848;CA1416;CA1859</NoWarn>
+    <NoWarn>CA1873;CA1848;CA1859</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
@@ -11,7 +11,7 @@
 
   <ItemGroup>
     <PackageReference Include="Npgsql" Version="10.0.3" />
-    <PackageReference Include="System.Runtime.Caching" Version="10.0.9" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.9" />
   </ItemGroup>
 
 </Project>
