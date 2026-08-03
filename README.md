@@ -1,6 +1,7 @@
 # OpenGIS Data Analysis Framework (opengis-daf)
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![CI](https://github.com/znlgis/opengis-daf/actions/workflows/ci.yml/badge.svg)](https://github.com/znlgis/opengis-daf/actions/workflows/ci.yml)
 [![.NET](https://img.shields.io/badge/.NET-10-512BD4.svg)](https://dotnet.microsoft.com/)
 [![C#](https://img.shields.io/badge/C%23-14-68217A.svg)](https://learn.microsoft.com/en-us/dotnet/csharp/)
 
@@ -116,7 +117,7 @@ daf plan export --plan <组/名> [--output <path>]    # 导出方案
  │    映射工具: FieldTypeMapper · GeometryTypeMapper    │
  ├───────────────────────────────────────────────────┤
  │         基础设施层 (OpenGisDAF.Infrastructure)        │
- │       配置 · 日志 (Serilog) · 密码加密 (DPAPI)       │
+ │       配置 · 日志 (Serilog) · 密码加密 (DPAPI / AES-GCM)  │
  └───────────────────────────────────────────────────┘
 ```
 
@@ -146,7 +147,7 @@ daf plan export --plan <组/名> [--output <path>]    # 导出方案
 |--------|---------|------|
 | `GeoJsonFeatureSource` | `.geojson` / `.json` | 支持属性过滤 |
 | `ShapefileFeatureSource` | `.shp` | 自动读取 `.prj` 投影文件 |
-| `PostgisFeatureSource` | PostgreSQL/PostGIS | GDAL PG: 驱动，密码 DPAPI 加密 |
+| `PostgisFeatureSource` | PostgreSQL/PostGIS | GDAL PG: 驱动，密码加密（DPAPI / AES-GCM） |
 | `InMemoryFeatureSource` | 内存数据集 | 算子间传递中间结果 |
 
 ### 输出 (`IFeatureSink`)
@@ -203,6 +204,18 @@ daf plan export --plan <组/名> [--output <path>]    # 导出方案
 - 提取重复代码：3 个适配器映射工具类消除跨文件重复
 - 改进防御性编程：5 个算子添加 `ExecuteAsync` 空参数校验
 - 改进错误信息：`ContinueIndependent` 策略下上游失败时的下游跳过逻辑
+
+### 复审加固（2026-08）
+
+在既有审查基础上进行第二轮复审，补充如下改进：
+
+- **跨平台密码加密**：连接串加密由仅限 Windows 的 DPAPI 扩展为跨平台方案，新增 `ConnectionEncryptionFactory` 按运行平台自动选择：Windows 使用 DPAPI，Linux/macOS 使用 AES-256-GCM（随机密钥持久化于用户配置目录，类 Unix 系统上密钥文件权限为 0600），并重新启用 `CA1416` 平台兼容性分析器。
+- **执行健壮性**：`ExecutionEngine.ExecuteItemAsync` 隔离单个算子的未处理异常，将其转为失败结果交由失败策略处理，避免整个方案被一个算子的异常中断（同时保留取消语义）。
+- **资源管理**：`ResultCache` 在容量淘汰及 `ClearAsync` 时释放 `IAsyncDisposable` 缓存值，并清理按键信号量字典（缓存键含每次执行的唯一标识，否则会无限增长）。
+- **数据安全**：`PlanRepository.SaveAsync` 在写入失败时清理残留的 `.tmp` 临时文件。
+- **依赖清理**：移除未使用的 `System.Runtime.Caching` 依赖，显式引用真正需要的 `System.Security.Cryptography.ProtectedData`。
+- **持续集成**：新增 GitHub Actions CI 工作流（`.github/workflows/ci.yml`），在 push / PR 时递归检出子模块并执行 Release 构建与测试。
+- **回归测试**：新增覆盖上述修复的回归测试，测试总数由 8 增至 15。
 
 ## 文档
 
