@@ -1,5 +1,6 @@
 using System.Text.Json;
 using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using NetTopologySuite.Geometries;
 using OpenGisDAF.Adapters;
@@ -8,6 +9,7 @@ using OpenGisDAF.Core;
 using OpenGisDAF.Execution;
 using OpenGisDAF.Operators;
 using OpenGisDAF.PlanManagement;
+using OpenGisDAF.Scheduling;
 using ExecutionContext = OpenGisDAF.Core.ExecutionContext;
 
 namespace OpenGisDAF.IntegrationTests;
@@ -113,6 +115,18 @@ public sealed class UnitFixes
     }
 
     [Fact]
+    public void OperatorPool_ReregisteringOperator_RemovesOldCategoryIndex()
+    {
+        var pool = new OperatorPool();
+        pool.Register(new FakeOperator("same", "old"));
+        pool.Register(new FakeOperator("same", "new"));
+
+        pool.GetByCategory("old").Should().BeEmpty();
+        pool.GetByCategory("new").Should().ContainSingle();
+        pool.GetById("same")!.Metadata.Category.Should().Be("new");
+    }
+
+    [Fact]
     public void AesConnectionEncryption_RoundTrips_WithTempKeyFile()
     {
         var keyPath = Path.Combine(Path.GetTempPath(), $"opengis-daf-test-{Guid.NewGuid():N}.key");
@@ -209,6 +223,130 @@ public sealed class UnitFixes
         await cache.InvalidateAsync("prefix:");
 
         tracker.DisposeCount.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task ResultCache_ReplacingExpiredValue_DisposesPreviousValue()
+    {
+        var cache = new ResultCache();
+        var previous = new TrackingAsyncDisposable();
+        var replacement = new TrackingAsyncDisposable();
+
+        await cache.GetOrComputeAsync("replace", () => Task.FromResult(previous));
+        await cache.GetOrComputeAsync("replace", () => Task.FromResult(replacement), TimeSpan.Zero);
+
+        previous.DisposeCount.Should().Be(1);
+        replacement.DisposeCount.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task ResultCache_ClearAsync_DoesNotDisposeActiveKeyLock()
+    {
+        var cache = new ResultCache();
+        var factoryStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseFactory = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var computation = cache.GetOrComputeAsync("active", async () =>
+        {
+            factoryStarted.SetResult();
+            await releaseFactory.Task;
+            return new object();
+        });
+
+        await factoryStarted.Task;
+        var clear = cache.ClearAsync(TestContext.Current.CancellationToken);
+        clear.IsCompleted.Should().BeFalse();
+
+        releaseFactory.SetResult();
+        await computation;
+        await clear.WaitAsync(TestContext.Current.CancellationToken);
+
+        var recomputed = false;
+        await cache.GetOrComputeAsync("active", () =>
+        {
+            recomputed = true;
+            return Task.FromResult(new object());
+        });
+
+        recomputed.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task ResultCache_CanceledClear_DoesNotOverlapActiveOperation()
+    {
+        var cache = new ResultCache();
+        var factoryStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseFactory = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var computation = cache.GetOrComputeAsync("active", async () =>
+        {
+            factoryStarted.SetResult();
+            await releaseFactory.Task;
+            return new object();
+        });
+
+        await factoryStarted.Task;
+        using var clearCts = new CancellationTokenSource();
+        var firstClear = cache.ClearAsync(clearCts.Token);
+        clearCts.Cancel();
+        var firstClearAct = async () => await firstClear;
+        await firstClearAct.Should().ThrowAsync<OperationCanceledException>();
+
+        var secondClear = cache.ClearAsync(TestContext.Current.CancellationToken);
+        secondClear.IsCompleted.Should().BeFalse();
+
+        releaseFactory.SetResult();
+        await computation;
+        await secondClear.WaitAsync(TestContext.Current.CancellationToken);
+    }
+
+    [Fact]
+    public async Task ResultCache_CanceledClear_DisposesAllDetachedValues()
+    {
+        var cache = new ResultCache();
+        var first = new TrackingAsyncDisposable();
+        var second = new TrackingAsyncDisposable();
+
+        await cache.GetOrComputeAsync("first", () => Task.FromResult(first));
+        await cache.GetOrComputeAsync("second", () => Task.FromResult(second));
+
+        using var clearCts = new CancellationTokenSource();
+        clearCts.Cancel();
+
+        var act = async () => await cache.ClearAsync(clearCts.Token);
+        await act.Should().ThrowAsync<OperationCanceledException>();
+
+        first.DisposeCount.Should().Be(1);
+        second.DisposeCount.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task SerialScheduler_SourceCreationFailure_RecordsFailedItem()
+    {
+        using var host = new DafTestHost();
+        var scheduler = host.Services.GetRequiredService<ISchedulingEngine>();
+        var plan = new AnalysisPlan("source-failure", "Source failure", "1.0.0")
+        {
+            Items =
+            [
+                new AnalysisItem("item-1", "missing", new OutputBinding(OutputAdapterType.ConsoleWriter, "-"))
+                {
+                    Inputs = new Dictionary<string, InputBinding>
+                    {
+                        ["source"] = new InputBinding
+                        {
+                            Type = BindingType.External,
+                            SourceId = "unsupported.data"
+                        }
+                    }
+                }
+            ]
+        };
+
+        var stats = await scheduler.ExecuteAsync(plan, TestContext.Current.CancellationToken);
+
+        stats.ItemStats.Should().ContainSingle(item =>
+            item.ItemId == "item-1" && item.FailedCount == 1);
     }
 
     [Fact]

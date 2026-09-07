@@ -100,72 +100,43 @@ public sealed partial class SerialScheduler : ISchedulingEngine
                 {
                     Log.ItemExecutionStart(_logger, item.Id, item.OperatorId);
                     var itemSw = Stopwatch.StartNew();
-
-                    var resolvedInputs = await ResolveInputsAsync(item, executionId, externalSources);
-
-                    // Execute
-                    var context = new ExecutionContext(
-                        plan.Id, executionId, _resultCache, _logger, _serviceProvider,
-                        new PlanExecutionStatistics { StartTime = startTime },
-                        currentItemId: item.Id);
-                    var result = await _executionEngine.ExecuteItemAsync(
-                        item, resolvedInputs, context, cancellationToken);
-
-                    itemSw.Stop();
-
-                    // Handle outputs
-                    if (result.Status == ExecutionStatus.Success)
+                    try
                     {
-                        await HandleOutputsAsync(item, result, executionId, cancellationToken);
-                        await CacheOutputsForDownstream(item.Id, result, executionId);
-                        CollectIssues(result, allIssues);
+                        var resolvedInputs = await ResolveInputsAsync(item, executionId, externalSources);
+                        var context = new ExecutionContext(
+                            plan.Id, executionId, _resultCache, _logger, _serviceProvider,
+                            new PlanExecutionStatistics { StartTime = startTime },
+                            currentItemId: item.Id);
+                        var result = await _executionEngine.ExecuteItemAsync(
+                            item, resolvedInputs, context, cancellationToken);
 
-                        itemStats.Add(new PerItemStats
+                        if (result.Status == ExecutionStatus.Success)
                         {
-                            ItemId = item.Id,
-                            OperatorId = item.OperatorId,
-                            Elapsed = itemSw.Elapsed,
-                            SuccessCount = 1
-                        });
-                    }
-                    else
-                    {
-                        Log.ItemExecutionFailed(
-                            _logger, item.Id, result.ErrorCode ?? "UNKNOWN", result.ErrorMessage ?? "无错误信息");
-                        failedItemIds.Add(item.Id);
-
-                        if (plan.ExecutionPolicy.FailurePolicy == FailurePolicy.StopOnAny)
-                        {
-                            Log.StopOnAny(_logger);
+                            await HandleOutputsAsync(item, result, executionId, cancellationToken);
+                            await CacheOutputsForDownstream(item.Id, result, executionId);
+                            CollectIssues(result, allIssues);
                             itemStats.Add(new PerItemStats
                             {
                                 ItemId = item.Id,
                                 OperatorId = item.OperatorId,
                                 Elapsed = itemSw.Elapsed,
-                                FailedCount = 1
+                                SuccessCount = 1
                             });
-
-                            // Track skipped items
-                            var foundCurrent = false;
-                            foreach (var remaining in sortResult.OrderedItems)
-                            {
-                                if (!foundCurrent)
-                                {
-                                    if (remaining.Id == item.Id)
-                                        foundCurrent = true;
-                                    continue;
-                                }
-                                itemStats.Add(new PerItemStats
-                                {
-                                    ItemId = remaining.Id,
-                                    OperatorId = remaining.OperatorId,
-                                    Elapsed = TimeSpan.Zero,
-                                    SkippedCount = 1
-                                });
-                            }
-                            break;
                         }
-
+                        else
+                        {
+                            RecordFailedItem(item, itemSw.Elapsed, result.ErrorCode, result.ErrorMessage,
+                                failedItemIds, itemStats);
+                            if (plan.ExecutionPolicy.FailurePolicy == FailurePolicy.StopOnAny)
+                            {
+                                Log.StopOnAny(_logger);
+                                AddSkippedItemsAfter(item.Id, sortResult.OrderedItems, itemStats);
+                                break;
+                            }
+                        }
+                    }
+                    catch (OperationCanceledException)
+                    {
                         itemStats.Add(new PerItemStats
                         {
                             ItemId = item.Id,
@@ -173,6 +144,18 @@ public sealed partial class SerialScheduler : ISchedulingEngine
                             Elapsed = itemSw.Elapsed,
                             FailedCount = 1
                         });
+                        throw;
+                    }
+                    catch (Exception ex)
+                    {
+                        RecordFailedItem(item, itemSw.Elapsed, "SCH_UNEXPECTED", ex.Message,
+                            failedItemIds, itemStats);
+                        if (plan.ExecutionPolicy.FailurePolicy == FailurePolicy.StopOnAny)
+                        {
+                            Log.StopOnAny(_logger);
+                            AddSkippedItemsAfter(item.Id, sortResult.OrderedItems, itemStats);
+                            break;
+                        }
                     }
                 }
                 finally
@@ -199,14 +182,9 @@ public sealed partial class SerialScheduler : ISchedulingEngine
         }
         finally
         {
-            // Cleanup external sources
-            foreach (var source in externalSources.Values)
-            {
-                await source.DisposeAsync();
-            }
+            await DisposeExternalSourcesAsync(externalSources);
+            await ClearResultCacheAsync();
         }
-
-        await _resultCache.ClearAsync(cancellationToken);
 
         planSw.Stop();
         var endTime = DateTimeOffset.UtcNow;
@@ -330,6 +308,75 @@ public sealed partial class SerialScheduler : ISchedulingEngine
         return item.Inputs.Values.Any(b => b is { Type: BindingType.Upstream } && failedItemIds.Contains(b.SourceId));
     }
 
+    private void RecordFailedItem(
+        AnalysisItem item,
+        TimeSpan elapsed,
+        string? errorCode,
+        string? errorMessage,
+        HashSet<string> failedItemIds,
+        List<PerItemStats> itemStats)
+    {
+        Log.ItemExecutionFailed(_logger, item.Id, errorCode ?? "UNKNOWN", errorMessage ?? "无错误信息");
+        failedItemIds.Add(item.Id);
+        itemStats.Add(new PerItemStats
+        {
+            ItemId = item.Id,
+            OperatorId = item.OperatorId,
+            Elapsed = elapsed,
+            FailedCount = 1
+        });
+    }
+
+    private static void AddSkippedItemsAfter(
+        string itemId,
+        IReadOnlyList<AnalysisItem> orderedItems,
+        List<PerItemStats> itemStats)
+    {
+        var currentIndex = orderedItems
+            .Select((item, index) => (item, index))
+            .First(pair => pair.item.Id == itemId)
+            .index;
+
+        foreach (var remaining in orderedItems.Skip(currentIndex + 1))
+        {
+            itemStats.Add(new PerItemStats
+            {
+                ItemId = remaining.Id,
+                OperatorId = remaining.OperatorId,
+                Elapsed = TimeSpan.Zero,
+                SkippedCount = 1
+            });
+        }
+    }
+
+    private async Task DisposeExternalSourcesAsync(
+        Dictionary<string, IFeatureSource> externalSources)
+    {
+        foreach (var source in externalSources.Values)
+        {
+            try
+            {
+                await source.DisposeAsync();
+            }
+            catch (Exception ex)
+            {
+                Log.SourceCleanupFailed(_logger, ex);
+            }
+        }
+    }
+
+    private async Task ClearResultCacheAsync()
+    {
+        try
+        {
+            await _resultCache.ClearAsync();
+        }
+        catch (Exception ex)
+        {
+            Log.CacheCleanupFailed(_logger, ex);
+        }
+    }
+
     private static void CollectIssues(ExecutionResult result, List<IssueRecord> allIssues)
     {
         foreach (var (_, value) in result.Outputs)
@@ -368,5 +415,13 @@ public sealed partial class SerialScheduler : ISchedulingEngine
         [LoggerMessage(Level = LogLevel.Critical,
             Message = "方案执行因未受控异常而终止")]
         public static partial void PlanExecutionAborted(ILogger logger, Exception ex);
+
+        [LoggerMessage(Level = LogLevel.Error,
+            Message = "外部数据源清理失败")]
+        public static partial void SourceCleanupFailed(ILogger logger, Exception ex);
+
+        [LoggerMessage(Level = LogLevel.Error,
+            Message = "结果缓存清理失败")]
+        public static partial void CacheCleanupFailed(ILogger logger, Exception ex);
     }
 }

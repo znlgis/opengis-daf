@@ -11,6 +11,12 @@ public sealed class OperatorPool : IOperatorPool
     public void Register(IOperator op)
     {
         ArgumentNullException.ThrowIfNull(op);
+        if (_operators.TryGetValue(op.Metadata.Id, out var previous)
+            && !string.Equals(previous.Metadata.Category, op.Metadata.Category, StringComparison.Ordinal))
+        {
+            RemoveFromCategory(previous.Metadata.Category, op.Metadata.Id);
+        }
+
         _operators[op.Metadata.Id] = op;
 
         var category = op.Metadata.Category;
@@ -29,15 +35,7 @@ public sealed class OperatorPool : IOperatorPool
         if (!_operators.TryRemove(operatorId, out var op))
             return false;
 
-        var category = op.Metadata.Category;
-        if (_categoryIndex.TryGetValue(category, out var list))
-        {
-            var updated = list.Where(id => id != operatorId).ToList();
-            if (updated.Count == 0)
-                _categoryIndex.TryRemove(category, out _);
-            else
-                _categoryIndex[category] = updated;
-        }
+        RemoveFromCategory(op.Metadata.Category, operatorId);
 
         return true;
     }
@@ -73,4 +71,16 @@ public sealed class OperatorPool : IOperatorPool
                 .Select(id => _operators.TryGetValue(id, out var op) ? op : null!)
                 .Where(op => op is not null)
                 .ToList()!);
+
+    private void RemoveFromCategory(string category, string operatorId)
+    {
+        if (!_categoryIndex.TryGetValue(category, out var list))
+            return;
+
+        var updated = list.Where(id => id != operatorId).ToList();
+        if (updated.Count == 0)
+            _categoryIndex.TryRemove(category, out _);
+        else
+            _categoryIndex[category] = updated;
+    }
 }

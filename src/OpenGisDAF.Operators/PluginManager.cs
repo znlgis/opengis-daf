@@ -12,7 +12,7 @@ public sealed class PluginManager : IPluginManager
     private readonly ILogger<PluginManager> _logger;
     private readonly List<PluginLoadContext> _contexts = [];
     private readonly object _contextsLock = new();
-    private readonly ConcurrentDictionary<string, List<string>> _pluginOperators = new();
+    private readonly ConcurrentDictionary<string, PluginRegistration> _plugins = new(StringComparer.OrdinalIgnoreCase);
 
     public PluginManager(IOperatorPool pool, ILogger<PluginManager> logger)
     {
@@ -28,13 +28,17 @@ public sealed class PluginManager : IPluginManager
         if (!File.Exists(fullPath))
             throw new FileNotFoundException($"Plugin DLL not found: {fullPath}");
 
+        lock (_contextsLock)
+        {
+            if (_plugins.TryGetValue(fullPath, out var existing))
+                return existing.Operators;
+        }
+
         _logger.LogInformation("Loading plugin from: {Path}", fullPath);
 
         var context = new PluginLoadContext(fullPath);
         var assembly = context.LoadFromAssemblyPath(fullPath);
         var operators = new List<IOperator>();
-
-        var operatorIds = new List<string>();
 
         foreach (var type in assembly.GetExportedTypes())
         {
@@ -45,9 +49,14 @@ public sealed class PluginManager : IPluginManager
             {
                 if (Activator.CreateInstance(type) is IOperator op)
                 {
+                    if (_pool.GetById(op.Metadata.Id) is not null)
+                    {
+                        _logger.LogWarning("Operator ID {OperatorId} is already registered; skipping plugin operator", op.Metadata.Id);
+                        continue;
+                    }
+
                     _pool.Register(op);
                     operators.Add(op);
-                    operatorIds.Add(op.Metadata.Id);
                     _logger.LogInformation("Registered operator: {OperatorId} ({Name}) from plugin {Plugin}",
                         op.Metadata.Id, op.Metadata.Name, Path.GetFileName(fullPath));
                 }
@@ -62,10 +71,8 @@ public sealed class PluginManager : IPluginManager
         lock (_contextsLock)
         {
             _contexts.Add(context);
+            _plugins[fullPath] = new PluginRegistration(context, operators);
         }
-
-        var pluginId = Path.GetFileNameWithoutExtension(fullPath);
-        _pluginOperators[pluginId] = operatorIds;
 
         if (operators.Count == 0)
             _logger.LogWarning("No IOperator implementations found in: {Path}", fullPath);
@@ -76,24 +83,28 @@ public sealed class PluginManager : IPluginManager
     public void UnloadPlugin(string pluginId)
     {
         PluginLoadContext? ctx;
+        PluginRegistration? registration = null;
         lock (_contextsLock)
         {
-            ctx = _contexts.FirstOrDefault(c =>
-                string.Equals(Path.GetFileNameWithoutExtension(c.DllPath), pluginId, StringComparison.OrdinalIgnoreCase));
+            registration = _plugins.Values.FirstOrDefault(r =>
+                string.Equals(Path.GetFileNameWithoutExtension(r.Context.DllPath), pluginId, StringComparison.OrdinalIgnoreCase));
+            ctx = registration?.Context;
 
             if (ctx is not null)
             {
                 _contexts.Remove(ctx);
+                _plugins.TryRemove(ctx.DllPath, out _);
             }
         }
 
         if (ctx is not null)
         {
-            if (_pluginOperators.TryRemove(pluginId, out var operatorIds))
+            if (registration is not null)
             {
-                foreach (var opId in operatorIds)
+                foreach (var op in registration.Operators)
                 {
-                    _pool.Unregister(opId);
+                    if (ReferenceEquals(_pool.GetById(op.Metadata.Id), op))
+                        _pool.Unregister(op.Metadata.Id);
                 }
             }
 
@@ -143,4 +154,6 @@ public sealed class PluginManager : IPluginManager
             return Assembly;
         }
     }
+
+    private sealed record PluginRegistration(PluginLoadContext Context, IReadOnlyList<IOperator> Operators);
 }

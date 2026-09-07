@@ -8,9 +8,27 @@ public sealed class ResultCache : IResultCache
     private readonly ConcurrentDictionary<string, CacheEntry> _cache = new();
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _keyLocks = new();
     private readonly TimeSpan _defaultTtl = TimeSpan.FromHours(1);
+    private readonly object _lifecycleSync = new();
+    private TaskCompletionSource _operationsDrained = CreateCompletedSource();
+    private int _activeOperations;
+    private bool _clearing;
     private const int MaxEntries = 1000;
 
     public async Task<T?> GetOrComputeAsync<T>(string cacheKey, Func<Task<T>> factory, TimeSpan? ttl = null)
+    {
+        await EnterOperationAsync(CancellationToken.None);
+
+        try
+        {
+            return await GetOrComputeCoreAsync(cacheKey, factory, ttl);
+        }
+        finally
+        {
+            ExitOperation();
+        }
+    }
+
+    private async Task<T?> GetOrComputeCoreAsync<T>(string cacheKey, Func<Task<T>> factory, TimeSpan? ttl)
     {
         var effectiveTtl = ttl ?? _defaultTtl;
 
@@ -35,7 +53,11 @@ public sealed class ResultCache : IResultCache
             }
 
             var value = await factory();
-            _cache[cacheKey] = new CacheEntry(value!, DateTimeOffset.UtcNow);
+            var replacement = new CacheEntry(value!, DateTimeOffset.UtcNow);
+            if (_cache.TryGetValue(cacheKey, out var previous) && _cache.TryUpdate(cacheKey, replacement, previous))
+                await DisposeValueAsync(previous.Value);
+            else
+                _cache[cacheKey] = replacement;
 
             // Enforce max entries by evicting oldest expired entries
             await EvictIfNeededAsync();
@@ -50,38 +72,56 @@ public sealed class ResultCache : IResultCache
 
     public async Task InvalidateAsync(string cacheKeyPrefix)
     {
+        await EnterOperationAsync(CancellationToken.None);
+
+        try
+        {
+            await InvalidateCoreAsync(cacheKeyPrefix);
+        }
+        finally
+        {
+            ExitOperation();
+        }
+    }
+
+    private async Task InvalidateCoreAsync(string cacheKeyPrefix)
+    {
         var keysToRemove = new List<string>();
         foreach (var kvp in _cache)
         {
             if (kvp.Key.StartsWith(cacheKeyPrefix, StringComparison.OrdinalIgnoreCase))
-            {
                 keysToRemove.Add(kvp.Key);
-                if (kvp.Value.Value is IAsyncDisposable asyncDisposable)
-                    await asyncDisposable.DisposeAsync();
-            }
         }
 
         foreach (var key in keysToRemove)
-            _cache.TryRemove(key, out _);
+        {
+            if (_cache.TryRemove(key, out var removed))
+                await DisposeValueAsync(removed.Value);
+        }
     }
 
     public async Task ClearAsync(CancellationToken cancellationToken = default)
     {
-        foreach (var entry in _cache.Values)
+        await BeginClearAsync(cancellationToken);
+
+        try
         {
+            var entries = _cache.ToArray();
+            _cache.Clear();
+
+            foreach (var entry in entries)
+            {
+                if (entry.Value.Value is IAsyncDisposable disposable)
+                    await disposable.DisposeAsync();
+            }
+
             cancellationToken.ThrowIfCancellationRequested();
-
-            if (entry.Value is IAsyncDisposable asyncDisposable)
-                await asyncDisposable.DisposeAsync();
+            RemoveIdleKeyLocks();
         }
-
-        _cache.Clear();
-
-        // Release per-key locks. Cache keys embed a per-execution id, so without
-        // this the semaphore dictionary would grow unbounded across plan runs.
-        foreach (var keyLock in _keyLocks.Values)
-            keyLock.Dispose();
-        _keyLocks.Clear();
+        finally
+        {
+            EndClear();
+        }
     }
 
     private async Task EvictIfNeededAsync()
@@ -101,8 +141,8 @@ public sealed class ResultCache : IResultCache
 
         foreach (var key in toRemove)
         {
-            if (_cache.TryRemove(key, out var removed) && removed.Value is IAsyncDisposable disposable)
-                await disposable.DisposeAsync();
+            if (_cache.TryRemove(key, out var removed))
+                await DisposeValueAsync(removed.Value);
         }
 
         // Second pass: if still over limit, evict oldest entries regardless of TTL
@@ -112,10 +152,97 @@ public sealed class ResultCache : IResultCache
             var excess = _cache.Count - MaxEntries;
             for (var i = 0; i < excess; i++)
             {
-                if (_cache.TryRemove(sorted[i].Key, out var removed) && removed.Value is IAsyncDisposable disposable)
-                    await disposable.DisposeAsync();
+                if (_cache.TryRemove(sorted[i].Key, out var removed))
+                    await DisposeValueAsync(removed.Value);
             }
         }
+    }
+
+    private async Task EnterOperationAsync(CancellationToken cancellationToken)
+    {
+        while (true)
+        {
+            Task waitTask;
+            lock (_lifecycleSync)
+            {
+                if (!_clearing)
+                {
+                    if (_activeOperations == 0)
+                        _operationsDrained = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                    _activeOperations++;
+                    return;
+                }
+
+                waitTask = _operationsDrained.Task;
+            }
+
+            await waitTask.WaitAsync(cancellationToken);
+        }
+    }
+
+    private async Task BeginClearAsync(CancellationToken cancellationToken)
+    {
+        Task waitTask;
+        lock (_lifecycleSync)
+        {
+            if (_clearing)
+                throw new InvalidOperationException("Cache clearing is already in progress.");
+
+            _clearing = true;
+            waitTask = _operationsDrained.Task;
+        }
+
+        try
+        {
+            await waitTask.WaitAsync(cancellationToken);
+        }
+        catch
+        {
+            EndClear();
+            throw;
+        }
+    }
+
+    private void ExitOperation()
+    {
+        lock (_lifecycleSync)
+        {
+            _activeOperations--;
+            if (_activeOperations == 0)
+                _operationsDrained.TrySetResult();
+        }
+    }
+
+    private void EndClear()
+    {
+        lock (_lifecycleSync)
+        {
+            _clearing = false;
+            if (_activeOperations == 0)
+                _operationsDrained = CreateCompletedSource();
+        }
+    }
+
+    private void RemoveIdleKeyLocks()
+    {
+        foreach (var pair in _keyLocks)
+        {
+            if (_keyLocks.TryRemove(pair.Key, out var keyLock))
+                keyLock.Dispose();
+        }
+    }
+
+    private static TaskCompletionSource CreateCompletedSource()
+    {
+        var source = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        source.SetResult();
+        return source;
+    }
+
+    private static async Task DisposeValueAsync(object value)
+    {
+        if (value is IAsyncDisposable asyncDisposable)
+            await asyncDisposable.DisposeAsync();
     }
 
     private sealed record CacheEntry(object Value, DateTimeOffset CreatedAt);

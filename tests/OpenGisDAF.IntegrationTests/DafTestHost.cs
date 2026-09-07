@@ -49,6 +49,9 @@ public sealed class DafTestHost : IDisposable
 
     public void Dispose()
     {
+        if (Services is IDisposable disposableServices)
+            disposableServices.Dispose();
+
         if (Directory.Exists(TempDir))
             Directory.Delete(TempDir, recursive: true);
     }
