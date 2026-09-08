@@ -153,24 +153,14 @@ public sealed class RemediationRegressionTests : IClassFixture<DafTestHost>
         File.Exists(Path.ChangeExtension(outputPath, ".dbf")).Should().BeTrue();
         File.Exists(Path.ChangeExtension(outputPath, ".prj")).Should().BeTrue();
 
-        var layerInfo = await Task.Run(() =>
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-            {
-                FileName = @"C:\OSGeo4W\bin\ogrinfo.exe",
-                Arguments = $"-so -al \"{outputPath}\"",
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            })!);
-        var output = await layerInfo.StandardOutput.ReadToEndAsync(TestContext.Current.CancellationToken);
-        var error = await layerInfo.StandardError.ReadToEndAsync(TestContext.Current.CancellationToken);
-        await layerInfo.WaitForExitAsync(TestContext.Current.CancellationToken);
-
-        layerInfo.ExitCode.Should().Be(0, error);
-        output.Should().Contain("code: String");
-        output.Should().Contain("name: String");
-        output.Should().Contain("descriptio: String");
+        // 用 GDAL 进程内回读替代外部 ogrinfo.exe，保证 Linux CI 可运行
+        await using var readBack = new ShapefileFeatureSource(
+            outputPath,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<ShapefileFeatureSource>.Instance);
+        var schema = ((IFeatureSchemaProvider)readBack).Schema;
+        schema.Fields.Should().Contain(f => f.Name == "code" && f.Type == FieldType.String);
+        schema.Fields.Should().Contain(f => f.Name == "name" && f.Type == FieldType.String);
+        schema.Fields.Should().Contain(f => f.Name == "descriptio" && f.Type == FieldType.String);
     }
 
     [Fact]
@@ -427,14 +417,17 @@ public sealed class RemediationRegressionTests : IClassFixture<DafTestHost>
     [Fact]
     public async Task SourceFactory_CreatesStructuredPostgisSource()
     {
-        var encryption = _host.Services.GetRequiredService<IConnectionEncryption>();
+        if (!await TrySeedPostgisProbeTableAsync())
+            Assert.Skip("PostGIS (127.0.0.1:5432) 不可用，跳过结构化 PostGIS 输入测试");
+
+        var encryption = ConnectionEncryptionFactory.Create();
         var binding = new InputBinding
         {
             Type = BindingType.External,
-            SourceId = "daf_test_shaft_tower",
+            SourceId = "daf_test_input_probe",
             ConnectionConfig = new ConnectionConfig
             {
-                DataSourceId = "local-postgis",
+                DataSourceId = "daf_test_input_probe",
                 AdapterType = "postgis",
                 Host = "127.0.0.1",
                 Port = 5432,
@@ -450,6 +443,37 @@ public sealed class RemediationRegressionTests : IClassFixture<DafTestHost>
         source.Should().BeAssignableTo<IFeatureSchemaProvider>();
         ((IFeatureSchemaProvider)source).Schema.SpatialReference!.Code.Should().Be(2326);
         await source.DisposeAsync();
+    }
+
+    private static async Task<bool> TrySeedPostgisProbeTableAsync()
+    {
+        const string connectionString = "Host=127.0.0.1;Port=5432;Database=postgres;Username=postgres;Password=postgres;Timeout=5";
+        try
+        {
+            await using var conn = new Npgsql.NpgsqlConnection(connectionString);
+            await conn.OpenAsync(TestContext.Current.CancellationToken);
+            await using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandTimeout = 20;
+                cmd.CommandText = """
+                    CREATE EXTENSION IF NOT EXISTS postgis;
+                    DROP TABLE IF EXISTS daf_test_input_probe;
+                    CREATE TABLE daf_test_input_probe (
+                        ogc_fid integer PRIMARY KEY,
+                        wkb_geometry geometry(PointZ, 2326));
+                    INSERT INTO daf_test_input_probe (ogc_fid, wkb_geometry)
+                    SELECT i, ST_SetSRID(ST_MakePoint(807590.4375 + i, 809753.25 + i, -1000), 2326)
+                    FROM generate_series(0, 7) AS i;
+                    """;
+                await cmd.ExecuteNonQueryAsync(TestContext.Current.CancellationToken);
+            }
+            return true;
+        }
+        catch (Exception ex) when (ex is Npgsql.NpgsqlException or System.Net.Sockets.SocketException
+            or InvalidOperationException or System.IO.IOException or TimeoutException)
+        {
+            return false;
+        }
     }
 
     [Theory]
