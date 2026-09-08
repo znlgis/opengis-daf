@@ -11,10 +11,11 @@ public sealed class QualityReportGenerator
         IReadOnlyList<IssueRecord> allIssues,
         IReadOnlyDictionary<string, List<IssueRecord>> issuesByItem,
         AnalysisPlan plan,
-        QualityReportConfig? config = null)
+        QualityReportConfig? config = null,
+        IReadOnlyDictionary<string, long>? checkedCounts = null)
     {
-        var score = QualityCalculator.CalculateScore(issuesByItem, config);
-        var ruleStats = QualityCalculator.CalculateRuleStats(issuesByItem);
+        var score = QualityCalculator.CalculateScore(issuesByItem, config, checkedCounts);
+        var ruleStats = QualityCalculator.CalculateRuleStats(issuesByItem, checkedCounts);
 
         var ruleStatsDict = ruleStats.ToDictionary(r => r.RuleId);
 

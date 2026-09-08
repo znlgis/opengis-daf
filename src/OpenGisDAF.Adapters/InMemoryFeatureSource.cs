@@ -5,15 +5,19 @@ using OpenGisDAF.Core;
 
 namespace OpenGisDAF.Adapters;
 
-public sealed class InMemoryFeatureSource : IFeatureSource
+public sealed class InMemoryFeatureSource : IFeatureSource, IFeatureSchemaProvider
 {
     private readonly List<IFeature> _features;
     private readonly FeatureSourceMetadata _metadata;
     private readonly ILogger<InMemoryFeatureSource>? _logger;
     private Envelope? _cachedBoundingBox;
-    private ISpatialReference? _cachedSpatialReference;
+    private readonly FeatureSchemaMetadata _schema;
 
-    public InMemoryFeatureSource(IEnumerable<IFeature> features, string? sourceId = null, ILogger<InMemoryFeatureSource>? logger = null)
+    public InMemoryFeatureSource(
+        IEnumerable<IFeature> features,
+        string? sourceId = null,
+        ILogger<InMemoryFeatureSource>? logger = null,
+        FeatureSchemaMetadata? metadata = null)
     {
         _features = features.ToList();
         _logger = logger;
@@ -24,11 +28,13 @@ public sealed class InMemoryFeatureSource : IFeatureSource
             FeatureCount = _features.Count,
             Description = "In-memory feature collection"
         };
+        _schema = metadata ?? new FeatureSchemaMetadata();
     }
 
     public FeatureSourceMetadata Metadata => _metadata;
     public Envelope BoundingBox => _cachedBoundingBox ??= CalculateBoundingBox();
-    public ISpatialReference SpatialReference => _cachedSpatialReference ??= new Utilities.SpatialReference(0, "Unknown");
+    public ISpatialReference SpatialReference => _schema.SpatialReference ?? UnknownSpatialReference;
+    public FeatureSchemaMetadata Schema => _schema;
 
     public Task<long> GetFeatureCountAsync() => Task.FromResult((long)_features.Count);
 
@@ -60,11 +66,11 @@ public sealed class InMemoryFeatureSource : IFeatureSource
 
     public ValueTask DisposeAsync()
     {
-        _features.Clear();
         _cachedBoundingBox = null;
-        _cachedSpatialReference = null;
         return ValueTask.CompletedTask;
     }
+
+    private static ISpatialReference UnknownSpatialReference { get; } = new Utilities.SpatialReference(0, "Unknown");
 
     private Envelope CalculateBoundingBox()
     {

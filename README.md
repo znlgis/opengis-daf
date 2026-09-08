@@ -50,8 +50,13 @@ dotnet build
 ### 测试
 
 ```bash
-dotnet test
+dotnet build OpenGisDAF.slnx --configuration Release
+dotnet test OpenGisDAF.slnx --configuration Release --no-build
 ```
+
+> 当前工具链（.NET 10 SDK + xunit.v3 4.0 + Microsoft Testing Platform 2.3.3）下，
+> `dotnet test` 在同一命令内构建时会报告「运行了零个测试」并以退出码 5 结束。
+> 请先构建，再用 `--no-build` 运行测试。
 
 ### 运行分析方案
 

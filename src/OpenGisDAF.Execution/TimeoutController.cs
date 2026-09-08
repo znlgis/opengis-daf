@@ -21,6 +21,21 @@ public static class TimeoutController
         try
         {
             var result = await action(linkedCts.Token);
+
+            // 算子可能自行捕获 OperationCanceledException 并返回 Canceled/RtCancelled，
+            // 使下方 catch 无法区分超时与用户取消；此处按令牌归属重新分类。
+            if (result.ErrorCode == ErrorCode.RtCancelled
+                && timeoutCts.IsCancellationRequested
+                && !externalCancellationToken.IsCancellationRequested)
+            {
+                return result with
+                {
+                    Status = ExecutionStatus.Failed,
+                    ErrorCode = ErrorCode.RtTimeout,
+                    ErrorMessage = $"执行超时（{timeout.TotalSeconds:0.###}s）"
+                };
+            }
+
             return result;
         }
         catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !externalCancellationToken.IsCancellationRequested)
@@ -29,7 +44,7 @@ public static class TimeoutController
             {
                 Status = ExecutionStatus.Failed,
                 ErrorCode = ErrorCode.RtTimeout,
-                ErrorMessage = $"执行超时（{timeout.TotalSeconds:F0}s）",
+                ErrorMessage = $"执行超时（{timeout.TotalSeconds:0.###}s）",
                 Elapsed = sw.Elapsed
             };
         }

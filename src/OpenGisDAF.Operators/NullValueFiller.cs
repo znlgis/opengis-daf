@@ -137,10 +137,15 @@ public sealed class NullValueFiller : IOperator
 
         try
         {
-            var targetField = (string)parameters["target_field"]!;
-            var defaultStr = (string)parameters["default_value"]!;
-            var fieldType = OperatorHelper.ParseFieldType((string)parameters["field_type"]!)!.Value;
-            var defaultValue = OperatorHelper.CoerceTo(defaultStr, fieldType);
+            var targetField = OperatorHelper.GetStringParam(parameters, "target_field");
+            var defaultStr = OperatorHelper.GetStringParam(parameters, "default_value");
+            var fieldTypeName = OperatorHelper.GetStringParam(parameters, "field_type");
+            if (targetField is null || defaultStr is null || fieldTypeName is null)
+                return OperatorHelper.Fail("空值填充参数缺失或类型无效", sw.Elapsed, logs);
+            var fieldType = OperatorHelper.ParseFieldType(fieldTypeName);
+            if (fieldType is null)
+                return OperatorHelper.Fail($"字段类型 '{fieldTypeName}' 无效", sw.Elapsed, logs);
+            var defaultValue = OperatorHelper.CoerceTo(defaultStr, fieldType.Value);
 
             if (!inputs.TryGetValue("source", out var source))
             {
@@ -192,7 +197,9 @@ public sealed class NullValueFiller : IOperator
                 Status = ExecutionStatus.Success,
                 Outputs = new Dictionary<string, object?>
                 {
-                    ["output"] = new InMemoryFeatureSource(results)
+                    ["output"] = new InMemoryFeatureSource(results, metadata: OperatorHelper.InheritSchema(
+                        source,
+                        addedField: new FieldDefinition { Name = targetField, Type = fieldType.Value }))
                 },
                 Elapsed = sw.Elapsed,
                 Logs = logs

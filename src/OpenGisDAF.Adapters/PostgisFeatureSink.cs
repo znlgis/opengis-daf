@@ -85,6 +85,7 @@ public sealed class PostgisFeatureSink : IFeatureSink
         var layer = new OguLayer
         {
             Name = _binding.TargetPath,
+            Wkid = _schema?.SpatialReferenceWkid,
             GeometryType = GeometryTypeMapper.ToOguGeometryType(_schema?.ProducedGeometryType),
             Fields = BuildFieldDefinitions()
         };

@@ -9,7 +9,7 @@ using OpenGisDAF.Core;
 
 namespace OpenGisDAF.Adapters;
 
-public sealed class PostgisFeatureSource : IFeatureSource
+public sealed class PostgisFeatureSource : IFeatureSource, IFeatureSchemaProvider
 {
     private readonly ConnectionConfig _config;
     private readonly string _tableName;
@@ -45,6 +45,29 @@ public sealed class PostgisFeatureSource : IFeatureSource
     public ISpatialReference SpatialReference =>
         _spatialReference ?? throw new InvalidOperationException(
             "SpatialReference is not available until the layer has been loaded.");
+
+    public FeatureSchemaMetadata Schema
+    {
+        get
+        {
+            if (_baseLayer is null)
+                throw new InvalidOperationException("Schema is not available until the layer has been loaded.");
+
+            return new FeatureSchemaMetadata
+            {
+                Fields = _baseLayer.Fields
+                    .Select(oguField => new FieldDefinition
+                    {
+                        Name = oguField.Name,
+                        Type = FieldTypeMapper.FromFieldDataType(oguField.DataType),
+                        Required = !oguField.IsNullable
+                    })
+                    .ToArray(),
+                GeometryType = GeometryTypeMapper.FromOguGeometryType(_baseLayer.GeometryType),
+                SpatialReference = SpatialReference
+            };
+        }
+    }
 
     public async Task<long> GetFeatureCountAsync()
     {

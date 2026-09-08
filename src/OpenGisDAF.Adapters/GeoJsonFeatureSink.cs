@@ -99,7 +99,7 @@ public sealed class GeoJsonFeatureSink : IFeatureSink
         var layer = new OguLayer
         {
             Name = Path.GetFileNameWithoutExtension(_outputBinding.TargetPath),
-            Wkid = 4326,
+            Wkid = _schema?.SpatialReferenceWkid,
             GeometryType = OpenGIS.Utils.Engine.Enums.GeometryType.UNKNOWN
         };
 

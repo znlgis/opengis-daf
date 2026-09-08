@@ -7,7 +7,7 @@ using OpenGisDAF.Core;
 
 namespace OpenGisDAF.Adapters;
 
-public sealed class ShapefileFeatureSource : IFeatureSource
+public sealed class ShapefileFeatureSource : IFeatureSource, IFeatureSchemaProvider
 {
     private readonly string _shapefilePath;
     private readonly ILogger<ShapefileFeatureSource> _logger;
@@ -33,6 +33,27 @@ public sealed class ShapefileFeatureSource : IFeatureSource
     public Envelope BoundingBox => _cachedBoundingBox ??= ComputeBoundingBox();
 
     public ISpatialReference SpatialReference => _cachedSpatialReference ??= BuildSpatialReference();
+
+    public FeatureSchemaMetadata Schema
+    {
+        get
+        {
+            var layer = _layer.Value;
+            return new FeatureSchemaMetadata
+            {
+                Fields = layer.Fields
+                    .Select(oguField => new FieldDefinition
+                    {
+                        Name = oguField.Name,
+                        Type = FieldTypeMapper.FromFieldDataType(oguField.DataType),
+                        Required = !oguField.IsNullable
+                    })
+                    .ToArray(),
+                GeometryType = GeometryTypeMapper.FromOguGeometryType(layer.GeometryType),
+                SpatialReference = SpatialReference
+            };
+        }
+    }
 
     public Task<long> GetFeatureCountAsync()
     {

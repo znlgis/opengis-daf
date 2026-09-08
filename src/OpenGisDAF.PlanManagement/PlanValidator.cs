@@ -281,6 +281,7 @@ public sealed partial class PlanValidator : IPlanValidator
                 if (c == 1)
                 {
                     // Found a back edge — cycle
+                    path.Add(neighborId);
                     return true;
                 }
 

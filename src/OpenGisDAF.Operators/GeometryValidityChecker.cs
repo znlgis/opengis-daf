@@ -166,7 +166,10 @@ public sealed class GeometryValidityChecker : IOperator
             Status = ExecutionStatus.Success,
             Outputs = new Dictionary<string, object?>
             {
-                [OutputKeyPassed] = new InMemoryFeatureSource(passedFeatures, $"gvc_passed_{context.ExecutionId}")
+                [OutputKeyPassed] = new InMemoryFeatureSource(
+                    passedFeatures,
+                    $"gvc_passed_{context.ExecutionId}",
+                    metadata: OperatorHelper.InheritSchema(source))
             },
             Elapsed = elapsed
         };

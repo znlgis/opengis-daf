@@ -100,9 +100,7 @@ public sealed class AttributeCompletenessChecker : IOperator
             };
         }
 
-        var fieldsStr = parameters.TryGetValue(ParamRequiredFields, out var raw) && raw is string s
-            ? s
-            : string.Empty;
+        var fieldsStr = OperatorHelper.GetStringParam(parameters, ParamRequiredFields) ?? string.Empty;
 
         if (string.IsNullOrWhiteSpace(fieldsStr))
         {
@@ -214,7 +212,10 @@ public sealed class AttributeCompletenessChecker : IOperator
             Status = ExecutionStatus.Success,
             Outputs = new Dictionary<string, object?>
             {
-                [OutputKeyPassed] = new InMemoryFeatureSource(passedFeatures, $"acc_passed_{context.ExecutionId}")
+                [OutputKeyPassed] = new InMemoryFeatureSource(
+                    passedFeatures,
+                    $"acc_passed_{context.ExecutionId}",
+                    metadata: OperatorHelper.InheritSchema(source))
             },
             Elapsed = elapsed
         };

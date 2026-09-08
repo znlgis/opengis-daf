@@ -8,9 +8,13 @@ public static class ServiceCollectionExtensions
 {
     public static IServiceCollection AddPlanManagement(
         this IServiceCollection services,
-        string rootPath = "plans")
+        string? rootPath = null)
     {
         ArgumentNullException.ThrowIfNull(services);
+        rootPath ??= Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "opengis-daf",
+            "plans");
 
         services.AddSingleton<IPlanSerializer, PlanSerializer>();
         services.AddSingleton<IPlanValidator, PlanValidator>();

@@ -1,5 +1,6 @@
 using Npgsql;
 using OpenGisDAF.Core;
+using System.Security.Cryptography;
 
 namespace OpenGisDAF.Adapters.Utilities;
 
@@ -20,7 +21,30 @@ public static class PostgisConnectionHelper
         ArgumentNullException.ThrowIfNull(config);
         ArgumentNullException.ThrowIfNull(encryption);
 
-        var password = encryption.Decrypt(config.EncryptedPassword ?? string.Empty);
+        if (string.IsNullOrWhiteSpace(config.Host))
+            throw new ArgumentException("PostGIS Host 不能为空。", nameof(config));
+        if (config.Port is < 1 or > 65535)
+            throw new ArgumentException("PostGIS Port 必须在 1 到 65535 之间。", nameof(config));
+        if (string.IsNullOrWhiteSpace(config.Database))
+            throw new ArgumentException("PostGIS Database 不能为空。", nameof(config));
+        if (string.IsNullOrWhiteSpace(config.UserName))
+            throw new ArgumentException("PostGIS UserName 不能为空。", nameof(config));
+        if (string.IsNullOrWhiteSpace(config.EncryptedPassword))
+            throw new ArgumentException("PostGIS EncryptedPassword 不能为空且必须是有效密文。", nameof(config));
+
+        string password;
+        try
+        {
+            password = encryption.Decrypt(config.EncryptedPassword);
+        }
+        catch (Exception ex) when (ex is FormatException or CryptographicException or ArgumentException)
+        {
+            throw new ArgumentException("PostGIS EncryptedPassword 不是有效密文。", nameof(config), ex);
+        }
+
+        if (string.IsNullOrEmpty(password))
+            throw new ArgumentException("PostGIS EncryptedPassword 解密结果为空。", nameof(config));
+
         var builder = new NpgsqlConnectionStringBuilder
         {
             Host = config.Host,

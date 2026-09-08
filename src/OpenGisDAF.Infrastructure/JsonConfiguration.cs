@@ -1,6 +1,10 @@
 using System.Text.Json;
+using System.Text.Encodings.Web;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
+using AnalysisParametersJsonConverter = OpenGisDAF.Infrastructure.JsonConverters.AnalysisParametersJsonConverter;
+using OutputAdapterTypeJsonConverter = OpenGisDAF.Infrastructure.JsonConverters.OutputAdapterTypeJsonConverter;
+using GeometryWktJsonConverter = OpenGisDAF.Core.JsonConverters.GeometryWktJsonConverter;
 
 namespace OpenGisDAF.Infrastructure;
 
@@ -17,8 +21,13 @@ public static class JsonConfiguration
             PropertyNameCaseInsensitive = true,
             WriteIndented = true,
             MaxDepth = 32,
+            Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+            NumberHandling = JsonNumberHandling.AllowNamedFloatingPointLiterals,
             Converters =
             {
+                new AnalysisParametersJsonConverter(),
+                new OutputAdapterTypeJsonConverter(),
+                new GeometryWktJsonConverter(),
                 new JsonStringEnumConverter(JsonNamingPolicy.CamelCase)
             }
         };

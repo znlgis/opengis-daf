@@ -160,7 +160,7 @@ public sealed class BufferOperator : IOperator
             context.Logger.LogInformation(
                 "[Buffer] 完成缓冲区分析，输出要素数={Count}", results.Count);
 
-            var output = new InMemoryFeatureSource(results);
+            var output = new InMemoryFeatureSource(results, metadata: OperatorHelper.InheritSchema(source, GeometryType.Polygon));
 
             return new ExecutionResult
             {

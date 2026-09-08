@@ -150,23 +150,24 @@ public sealed class IntersectCheckOperator : IOperator
             }
 
             // 执行空间分析
-            var outputFeatures = useSecondInput
+            var checkResult = useSecondInput
                 ? CheckCrossIntersect(sourceFeatures, targetFeatures, qcMode, context, cancellationToken)
                 : CheckSelfIntersect(sourceFeatures, qcMode, context, cancellationToken);
 
-            var resultSource = new InMemoryFeatureSource(outputFeatures);
+            var resultSource = new InMemoryFeatureSource(checkResult.Features, metadata: OperatorHelper.InheritSchema(sourceSource));
             var elapsed = sw.Elapsed;
 
             context.Logger.LogInformation(
                 "[IntersectCheck] 完成: 产出 {Count} 条结果, 耗时 {Elapsed}ms",
-                outputFeatures.Count, elapsed.TotalMilliseconds);
+                checkResult.Features.Count, elapsed.TotalMilliseconds);
 
             return new ExecutionResult
             {
                 Status = ExecutionStatus.Success,
                 Outputs = new Dictionary<string, object?>
                 {
-                    ["output"] = resultSource
+                    ["output"] = resultSource,
+                    ["issues"] = checkResult.Issues
                 },
                 Elapsed = elapsed,
                 Logs = logs
@@ -200,8 +201,8 @@ public sealed class IntersectCheckOperator : IOperator
 
     private static bool GetUseSecondInput(IReadOnlyDictionary<string, object?> parameters)
     {
-        if (parameters.TryGetValue("use_second_input", out var val) && val is bool b)
-            return b;
+        var value = OperatorHelper.GetBoolParam(parameters, "use_second_input");
+        if (value is not null) return value.Value;
 
         return true;
     }
@@ -214,7 +215,7 @@ public sealed class IntersectCheckOperator : IOperator
         return false;
     }
 
-    private List<IFeature> CheckCrossIntersect(
+    private CheckResult CheckCrossIntersect(
         List<IFeature> sourceFeatures,
         List<IFeature> targetFeatures,
         bool qcMode,
@@ -222,6 +223,7 @@ public sealed class IntersectCheckOperator : IOperator
         CancellationToken cancellationToken)
     {
         var results = new List<IFeature>();
+        var issues = new List<IssueRecord>();
         long processed = 0;
         long hits = 0;
 
@@ -262,7 +264,7 @@ public sealed class IntersectCheckOperator : IOperator
 
                 if (qcMode)
                 {
-                    results.Add(CreateQcFeature(src, tgt, srcWkt, tgtWkt, "intersect", context));
+                    issues.Add(CreateIssue(src, tgt, srcWkt, tgtWkt, "INTERSECT", context));
                 }
                 else
                 {
@@ -275,16 +277,17 @@ public sealed class IntersectCheckOperator : IOperator
             "[IntersectCheck] 交叉检查统计: 检查 {Processed} 个 source 要素, 发现 {Hits} 处相交",
             processed, hits);
 
-        return results;
+        return new CheckResult(results, issues);
     }
 
-    private List<IFeature> CheckSelfIntersect(
+    private CheckResult CheckSelfIntersect(
         List<IFeature> features,
         bool qcMode,
         ExecutionContext context,
         CancellationToken cancellationToken)
     {
         var results = new List<IFeature>();
+        var issues = new List<IssueRecord>();
         long hits = 0;
 
         var wkts = features.Select(f => WktConverter.ToWkt(f.Geometry)).ToList();
@@ -322,7 +325,7 @@ public sealed class IntersectCheckOperator : IOperator
 
                 if (qcMode)
                 {
-                    results.Add(CreateQcFeature(src, tgt, srcWkt, tgtWkt, "intersect", context));
+                    issues.Add(CreateIssue(src, tgt, srcWkt, tgtWkt, "INTERSECT", context));
                 }
                 else
                 {
@@ -335,7 +338,7 @@ public sealed class IntersectCheckOperator : IOperator
             "[IntersectCheck] 自相交检查统计: 检查 {Count} 个要素, 发现 {Hits} 处相交",
             features.Count, hits);
 
-        return results;
+        return new CheckResult(results, issues);
     }
 
     private static IFeature CreatePairFeature(IFeature src, IFeature tgt, string srcWkt, string tgtWkt)
@@ -353,25 +356,30 @@ public sealed class IntersectCheckOperator : IOperator
             });
     }
 
-    private static IFeature CreateQcFeature(IFeature src, IFeature tgt, string srcWkt, string tgtWkt,
+    private static IssueRecord CreateIssue(IFeature src, IFeature tgt, string srcWkt, string tgtWkt,
         string issueType, ExecutionContext context)
     {
-        return new SimpleFeature(
-            Id: Guid.NewGuid().ToString(),
-            Geometry: src.Geometry,
-            Attributes: new Dictionary<string, object?>
+        return new IssueRecord
+        {
+            PlanId = context.PlanId,
+            ExecutionId = context.ExecutionId,
+            ItemId = context.CurrentItemId,
+            FeatureId = src.Id,
+            IssueType = issueType,
+            Severity = IssueSeverity.Error,
+            Description = $"要素 {src.Id} 与要素 {tgt.Id} 相交",
+            ContextData = new Dictionary<string, object?>
             {
-                ["issue_type"] = issueType,
-                ["severity"] = "Error",
                 ["source_feature_id"] = src.Id,
                 ["target_feature_id"] = tgt.Id,
                 ["source_wkt"] = srcWkt,
-                ["target_wkt"] = tgtWkt,
-                ["description"] = $"要素 {src.Id} 与要素 {tgt.Id} 相交",
-                ["plan_id"] = context.PlanId,
-                ["execution_id"] = context.ExecutionId
-            });
+                ["target_wkt"] = tgtWkt
+            },
+            ViolationGeometry = src.Geometry
+        };
     }
+
+    private sealed record CheckResult(List<IFeature> Features, List<IssueRecord> Issues);
 
     private static ExecutionResult FailResult(string message, TimeSpan elapsed, IReadOnlyList<ExecutionLogEntry> logs)
     {

@@ -9,7 +9,7 @@ using OpenGisDAF.Core;
 
 namespace OpenGisDAF.Adapters;
 
-public sealed class GeoJsonFeatureSource : IFeatureSource
+public sealed class GeoJsonFeatureSource : IFeatureSource, IFeatureSchemaProvider
 {
     private readonly string _geojsonPath;
     private readonly ILogger<GeoJsonFeatureSource>? _logger;
@@ -88,6 +88,27 @@ public sealed class GeoJsonFeatureSource : IFeatureSource
             var wkid = layer.Wkid ?? 4326;
             _cachedSpatialReference = new Utilities.SpatialReference(wkid, Utilities.SpatialReference.BuildWkt(wkid));
             return _cachedSpatialReference;
+        }
+    }
+
+    public FeatureSchemaMetadata Schema
+    {
+        get
+        {
+            var layer = GetLayer(null);
+            return new FeatureSchemaMetadata
+            {
+                Fields = layer.Fields
+                    .Select(oguField => new FieldDefinition
+                    {
+                        Name = oguField.Name,
+                        Type = FieldTypeMapper.FromFieldDataType(oguField.DataType),
+                        Required = !oguField.IsNullable
+                    })
+                    .ToArray(),
+                GeometryType = GeometryTypeMapper.FromOguGeometryType(layer.GeometryType),
+                SpatialReference = SpatialReference
+            };
         }
     }
 

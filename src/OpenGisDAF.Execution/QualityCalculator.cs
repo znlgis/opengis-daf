@@ -6,7 +6,8 @@ public sealed class QualityCalculator
 {
     public static double CalculateScore(
         IReadOnlyDictionary<string, List<IssueRecord>> issuesByItem,
-        QualityReportConfig? config = null)
+        QualityReportConfig? config = null,
+        IReadOnlyDictionary<string, long>? checkedCounts = null)
     {
         if (issuesByItem.Count == 0)
             return 100.0;
@@ -20,11 +21,15 @@ public sealed class QualityCalculator
             var weight = weights.TryGetValue(itemId, out var w) ? w : 1.0;
             totalWeight += weight;
 
-            var totalIssues = issues.Count;
-            var errorIssues = issues.Count(i => i.Severity == IssueSeverity.Error);
+            var totalChecked = checkedCounts?.GetValueOrDefault(itemId, issues.Count) ?? issues.Count;
+            var failedFeatures = issues
+                .Where(i => i.Severity == IssueSeverity.Error)
+                .Select(i => i.FeatureId)
+                .Distinct(StringComparer.Ordinal)
+                .Count();
 
-            var passRate = totalIssues > 0
-                ? Math.Max(0, 1.0 - (double)errorIssues / Math.Max(totalIssues, 1))
+            var passRate = totalChecked > 0
+                ? Math.Max(0, 1.0 - (double)failedFeatures / totalChecked)
                 : 1.0;
 
             totalWeightedScore += weight * passRate;
@@ -36,7 +41,8 @@ public sealed class QualityCalculator
     }
 
     public static IReadOnlyList<RuleLevelStats> CalculateRuleStats(
-        IReadOnlyDictionary<string, List<IssueRecord>> issuesByItem)
+        IReadOnlyDictionary<string, List<IssueRecord>> issuesByItem,
+        IReadOnlyDictionary<string, long>? checkedCounts = null)
     {
         var stats = new List<RuleLevelStats>();
 
@@ -45,12 +51,23 @@ public sealed class QualityCalculator
             stats.Add(new RuleLevelStats
             {
                 RuleId = itemId,
-                // P1: TotalChecked reflects issues found per rule; feature-level checked counts require per-operator tracking.
-                TotalChecked = issues.Count,
-                Passed = issues.Count(i => i.Severity != IssueSeverity.Error),
-                Failed = issues.Count(i => i.Severity == IssueSeverity.Error),
-                PassRate = issues.Count > 0
-                    ? Math.Round((double)issues.Count(i => i.Severity != IssueSeverity.Error) / issues.Count, 4)
+                TotalChecked = checkedCounts?.GetValueOrDefault(itemId, issues.Count) ?? issues.Count,
+                Passed = Math.Max(0, (checkedCounts?.GetValueOrDefault(itemId, issues.Count) ?? issues.Count)
+                    - issues.Where(i => i.Severity == IssueSeverity.Error)
+                        .Select(i => i.FeatureId)
+                        .Distinct(StringComparer.Ordinal)
+                        .Count()),
+                Failed = issues.Where(i => i.Severity == IssueSeverity.Error)
+                    .Select(i => i.FeatureId)
+                    .Distinct(StringComparer.Ordinal)
+                    .Count(),
+                PassRate = (checkedCounts?.GetValueOrDefault(itemId, issues.Count) ?? issues.Count) > 0
+                    ? Math.Round((double)Math.Max(0, (checkedCounts?.GetValueOrDefault(itemId, issues.Count) ?? issues.Count)
+                        - issues.Where(i => i.Severity == IssueSeverity.Error)
+                            .Select(i => i.FeatureId)
+                            .Distinct(StringComparer.Ordinal)
+                            .Count())
+                        / (checkedCounts?.GetValueOrDefault(itemId, issues.Count) ?? issues.Count), 4)
                     : 1.0
             });
         }

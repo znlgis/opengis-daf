@@ -32,11 +32,7 @@ public sealed class DafApplication : IAsyncDisposable
             services.AddScheduling();
         });
 
-        builder.ConfigureLogging(config =>
-        {
-            config.MinimumLevel.Information()
-                  .WriteTo.Console(formatProvider: CultureInfo.InvariantCulture);
-        });
+        builder.ConfigureLogging(config => config.MinimumLevel.Information());
 
         _services = builder.Build();
     }
@@ -141,7 +137,9 @@ public sealed class DafApplication : IAsyncDisposable
         Console.WriteLine($"总耗时: {stats.TotalElapsed.TotalSeconds:F2}s");
         foreach (var itemStat in stats.ItemStats)
         {
-            var status = itemStat.FailedCount > 0 ? "失败" : "成功";
+            var status = itemStat.FailedCount > 0 ? "失败"
+                : itemStat.SkippedCount > 0 ? "跳过"
+                : "成功";
             Console.WriteLine($"  {itemStat.OperatorId} ({itemStat.ItemId}): {status} ({itemStat.Elapsed.TotalSeconds:F2}s)");
         }
 
@@ -156,7 +154,8 @@ public sealed class DafApplication : IAsyncDisposable
             await GenerateReportIfQcMode(plan, stats, reportPath);
         }
 
-        return 0;
+        var hasFailure = stats.ItemStats.Any(item => item.FailedCount > 0 || item.SkippedCount > 0);
+        return hasFailure ? 1 : 0;
     }
 
     private static async Task GenerateReportIfQcMode(AnalysisPlan plan, PlanExecutionStatistics stats, string reportPath)
@@ -169,7 +168,8 @@ public sealed class DafApplication : IAsyncDisposable
             .ToDictionary(g => g.Key, g => g.ToList());
 
         var report = QualityReportGenerator.Generate(
-            stats.Issues, issuesByItem, plan);
+            stats.Issues, issuesByItem, plan,
+            checkedCounts: stats.QcStats?.CheckedCountsByItem);
 
         await QualityReportGenerator.SaveAsync(report, reportPath);
         Console.WriteLine($"质检报告已保存: {reportPath}");
@@ -348,6 +348,8 @@ public sealed class DafApplication : IAsyncDisposable
         await manager.CreateAsync(plan);
 
         Console.WriteLine($"方案已创建: [{plan.Group}] {plan.Name} ({plan.Id})");
+        if (plan.Items.Count == 0)
+            Console.WriteLine("提示: 新建方案为草稿，items 为空；补充至少一个 item 后才能通过 daf validate 与 daf run。");
         return 0;
     }
 

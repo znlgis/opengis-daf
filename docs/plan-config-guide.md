@@ -59,9 +59,11 @@
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| `adapterType` | string | 输出适配器：`console`、`geojson`、`shapefile`、`postgis` |
+| `adapterType` | string | 输出适配器。推荐使用短名：`console`、`geojson`、`shapefile`、`postgis`；也接受枚举成员名 `ConsoleWriter`、`GeoJsonWriter`、`ShapefileWriter`、`PostGISWriter`（大小写不敏感） |
 | `targetPath` | string | 输出文件路径（console 忽略） |
 | `connectionConfig` | object? | 数据库连接配置（仅 postgis） |
+
+> `encryptedPassword` 必须是当前用户上下文生成的 DPAPI/AES 密文，不能直接填写明文密码。`FeatureId` 表示底层驱动分配的要素 FID；当前 GDAL 通常使用从 0 开始的编号，该编号不保证跨驱动或跨版本稳定。
 | `formatOptions` | object? | 格式化选项（编码、小数位数等） |
 | `isIntermediate` | bool | 是否中间结果（可被缓存复用） |
 

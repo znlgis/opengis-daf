@@ -66,7 +66,8 @@ public sealed class Scenario3_QualityCheck : IClassFixture<DafTestHost>
             "incomplete-attributes.geojson 中有至少 3 个空字段（fid=2 code null, fid=3 name null, fid=4 code+name null+desc empty）");
 
         stats.Issues.Should().NotBeEmpty();
-        stats.Issues.Should().Contain(i => i.FeatureId == "2" && i.IssueType == "ATTR_EMPTY");
-        stats.Issues.Should().Contain(i => i.FeatureId == "4" && i.IssueType == "ATTR_EMPTY");
+        stats.Issues.Should().Contain(i => i.FeatureId == "1" && i.IssueType == "ATTR_MISSING");
+        stats.Issues.Should().Contain(i => i.FeatureId == "2" && i.IssueType == "ATTR_MISSING");
+        stats.Issues.Should().Contain(i => i.FeatureId == "3" && i.IssueType == "ATTR_EMPTY");
     }
 }

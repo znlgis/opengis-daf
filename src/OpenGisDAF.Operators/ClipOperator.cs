@@ -145,7 +145,7 @@ public sealed class ClipOperator : IOperator
             context.Logger.LogInformation(
                 "[Clip] 完成裁剪分析，输出要素数={Count}", results.Count);
 
-            var output = new InMemoryFeatureSource(results);
+            var output = new InMemoryFeatureSource(results, metadata: OperatorHelper.InheritSchema(source));
 
             return new ExecutionResult
             {

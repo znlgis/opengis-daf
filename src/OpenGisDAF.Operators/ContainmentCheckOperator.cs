@@ -145,26 +145,27 @@ public sealed class ContainmentCheckOperator : IOperator
             context.Logger.LogInformation("[ContainmentCheck] 加载 target 要素: {Count}", targetFeatures.Count);
 
             // 执行空间分析
-            var outputFeatures = relationship switch
+            var checkResult = relationship switch
             {
                 "contains" => CheckContains(sourceFeatures, targetFeatures, qcMode, context, cancellationToken),
                 "within" => CheckWithin(sourceFeatures, targetFeatures, qcMode, context, cancellationToken),
-                _ => new List<IFeature>()
+                _ => new CheckResult([], [])
             };
 
-            var resultSource = new InMemoryFeatureSource(outputFeatures);
+            var resultSource = new InMemoryFeatureSource(checkResult.Features, metadata: OperatorHelper.InheritSchema(sourceSource));
             var elapsed = sw.Elapsed;
 
             context.Logger.LogInformation(
                 "[ContainmentCheck] 完成: 产出 {Count} 条结果, 耗时 {Elapsed}ms",
-                outputFeatures.Count, elapsed.TotalMilliseconds);
+                checkResult.Features.Count, elapsed.TotalMilliseconds);
 
             return new ExecutionResult
             {
                 Status = ExecutionStatus.Success,
                 Outputs = new Dictionary<string, object?>
                 {
-                    ["output"] = resultSource
+                    ["output"] = resultSource,
+                    ["issues"] = checkResult.Issues
                 },
                 Elapsed = elapsed,
                 Logs = logs
@@ -198,8 +199,8 @@ public sealed class ContainmentCheckOperator : IOperator
 
     private static string GetRelationship(IReadOnlyDictionary<string, object?> parameters)
     {
-        if (parameters.TryGetValue("relationship", out var val) && val is string s && !string.IsNullOrWhiteSpace(s))
-            return s;
+        var value = OperatorHelper.GetStringParam(parameters, "relationship");
+        if (value is not null) return value;
 
         return "contains";
     }
@@ -212,7 +213,7 @@ public sealed class ContainmentCheckOperator : IOperator
         return false;
     }
 
-    private List<IFeature> CheckContains(
+    private CheckResult CheckContains(
         List<IFeature> sourceFeatures,
         List<IFeature> targetFeatures,
         bool qcMode,
@@ -220,6 +221,7 @@ public sealed class ContainmentCheckOperator : IOperator
         CancellationToken cancellationToken)
     {
         var results = new List<IFeature>();
+        var issues = new List<IssueRecord>();
         long hits = 0;
 
         foreach (var src in sourceFeatures)
@@ -251,7 +253,7 @@ public sealed class ContainmentCheckOperator : IOperator
 
                 if (qcMode)
                 {
-                    results.Add(CreateQcFeature(src, tgt, srcWkt, tgtWkt, "contains", context));
+                    issues.Add(CreateIssue(src, tgt, srcWkt, tgtWkt, "CONTAINS", context));
                 }
                 else
                 {
@@ -264,10 +266,10 @@ public sealed class ContainmentCheckOperator : IOperator
             "[ContainmentCheck] 包含检查统计: 发现 {Hits} 处包含关系",
             hits);
 
-        return results;
+        return new CheckResult(results, issues);
     }
 
-    private List<IFeature> CheckWithin(
+    private CheckResult CheckWithin(
         List<IFeature> sourceFeatures,
         List<IFeature> targetFeatures,
         bool qcMode,
@@ -275,6 +277,7 @@ public sealed class ContainmentCheckOperator : IOperator
         CancellationToken cancellationToken)
     {
         var results = new List<IFeature>();
+        var issues = new List<IssueRecord>();
         long hits = 0;
 
         foreach (var src in sourceFeatures)
@@ -307,7 +310,7 @@ public sealed class ContainmentCheckOperator : IOperator
 
                 if (qcMode)
                 {
-                    results.Add(CreateQcFeature(src, tgt, srcWkt, tgtWkt, "within", context));
+                    issues.Add(CreateIssue(src, tgt, srcWkt, tgtWkt, "WITHIN", context));
                 }
                 else
                 {
@@ -320,7 +323,7 @@ public sealed class ContainmentCheckOperator : IOperator
             "[ContainmentCheck] Within检查统计: 发现 {Hits} 处被包含关系",
             hits);
 
-        return results;
+        return new CheckResult(results, issues);
     }
 
     private static IFeature CreatePairFeature(IFeature src, IFeature tgt, string srcWkt, string tgtWkt, string relation)
@@ -338,29 +341,34 @@ public sealed class ContainmentCheckOperator : IOperator
             });
     }
 
-    private static IFeature CreateQcFeature(IFeature src, IFeature tgt, string srcWkt, string tgtWkt,
+    private static IssueRecord CreateIssue(IFeature src, IFeature tgt, string srcWkt, string tgtWkt,
         string issueType, ExecutionContext context)
     {
         var description = issueType == "contains"
             ? $"要素 {src.Id} 包含要素 {tgt.Id}"
             : $"要素 {src.Id} 位于要素 {tgt.Id} 内部";
 
-        return new SimpleFeature(
-            Id: Guid.NewGuid().ToString(),
-            Geometry: src.Geometry,
-            Attributes: new Dictionary<string, object?>
+        return new IssueRecord
+        {
+            PlanId = context.PlanId,
+            ExecutionId = context.ExecutionId,
+            ItemId = context.CurrentItemId,
+            FeatureId = src.Id,
+            IssueType = issueType,
+            Severity = IssueSeverity.Error,
+            Description = description,
+            ContextData = new Dictionary<string, object?>
             {
-                ["issue_type"] = issueType,
-                ["severity"] = "Error",
                 ["source_feature_id"] = src.Id,
                 ["target_feature_id"] = tgt.Id,
                 ["source_wkt"] = srcWkt,
-                ["target_wkt"] = tgtWkt,
-                ["description"] = description,
-                ["plan_id"] = context.PlanId,
-                ["execution_id"] = context.ExecutionId
-            });
+                ["target_wkt"] = tgtWkt
+            },
+            ViolationGeometry = src.Geometry
+        };
     }
+
+    private sealed record CheckResult(List<IFeature> Features, List<IssueRecord> Issues);
 
     private static ExecutionResult FailResult(string message, TimeSpan elapsed, IReadOnlyList<ExecutionLogEntry> logs)
     {

@@ -6,7 +6,7 @@ namespace OpenGisDAF.Adapters.Utilities;
 public static class WktConverter
 {
     private static readonly ThreadLocal<WKTReader> Reader = new(() => new WKTReader());
-    private static readonly WKTWriter Writer = new();
+    private static readonly WKTWriter Writer = new() { OutputOrdinates = Ordinates.XYZ };
 
     public static string ToWkt(Geometry geometry)
     {

@@ -141,9 +141,14 @@ public sealed class FieldCalculator : IOperator
 
         try
         {
-            var targetField = (string)parameters["target_field"]!;
-            var expression = (string)parameters["expression"]!;
-            var fieldType = OperatorHelper.ParseFieldType((string)parameters["field_type"]!)!.Value;
+            var targetField = OperatorHelper.GetStringParam(parameters, "target_field");
+            var expression = OperatorHelper.GetStringParam(parameters, "expression");
+            var fieldTypeName = OperatorHelper.GetStringParam(parameters, "field_type");
+            if (targetField is null || expression is null || fieldTypeName is null)
+                return OperatorHelper.Fail("字段计算参数缺失或类型无效", sw.Elapsed, logs);
+            var fieldType = OperatorHelper.ParseFieldType(fieldTypeName);
+            if (fieldType is null)
+                return OperatorHelper.Fail($"字段类型 '{fieldTypeName}' 无效", sw.Elapsed, logs);
 
             if (!inputs.TryGetValue("source", out var source))
             {
@@ -160,7 +165,7 @@ public sealed class FieldCalculator : IOperator
                 object? computed;
                 try
                 {
-                    computed = ComputeExpression(expression, feature.Attributes, fieldType);
+                    computed = ComputeExpression(expression, feature.Attributes, fieldType.Value);
                 }
                 catch (Exception ex)
                 {
@@ -193,7 +198,9 @@ public sealed class FieldCalculator : IOperator
                 Status = ExecutionStatus.Success,
                 Outputs = new Dictionary<string, object?>
                 {
-                    ["output"] = new InMemoryFeatureSource(results)
+                    ["output"] = new InMemoryFeatureSource(results, metadata: OperatorHelper.InheritSchema(
+                        source,
+                        addedField: new FieldDefinition { Name = targetField, Type = fieldType.Value }))
                 },
                 Elapsed = sw.Elapsed,
                 Logs = logs

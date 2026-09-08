@@ -85,7 +85,8 @@ public sealed class ShapefileFeatureSink : IFeatureSink
         var layer = new OguLayer
         {
             Name = schema.Description ?? Path.GetFileNameWithoutExtension(_binding.TargetPath),
-            GeometryType = GeometryTypeMapper.ToOguGeometryType(schema.ProducedGeometryType)
+            GeometryType = GeometryTypeMapper.ToOguGeometryType(schema.ProducedGeometryType),
+            Wkid = schema.SpatialReferenceWkid
         };
 
         foreach (var fieldDef in schema.ProducedFields)

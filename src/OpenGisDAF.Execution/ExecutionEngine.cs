@@ -129,6 +129,13 @@ public sealed partial class ExecutionEngine : IExecutionEngine
                     return result;
                 }
 
+                if (result.Status == ExecutionStatus.Canceled
+                    || string.Equals(result.ErrorCode, ErrorCode.RtCancelled, StringComparison.Ordinal))
+                {
+                    result = result with { Elapsed = totalElapsed };
+                    return result;
+                }
+
                 if (result.ErrorCode is not null && !result.ErrorCode.StartsWith("ERR_RT_", StringComparison.Ordinal))
                 {
                     Log.NonRuntimeErrorStopRetry(_logger, result.ErrorCode);

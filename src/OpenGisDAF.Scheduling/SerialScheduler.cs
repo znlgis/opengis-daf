@@ -43,6 +43,7 @@ public sealed partial class SerialScheduler : ISchedulingEngine
         var executionId = Guid.NewGuid().ToString("N");
         var itemStats = new List<PerItemStats>();
         var allIssues = new List<IssueRecord>();
+        var checkedCounts = new Dictionary<string, long>(StringComparer.Ordinal);
         var startTime = DateTimeOffset.UtcNow;
 
         var dagResult = DagBuilder.Build(plan.Items);
@@ -71,7 +72,7 @@ public sealed partial class SerialScheduler : ISchedulingEngine
             };
         }
 
-        var externalSources = new Dictionary<string, IFeatureSource>();
+        var externalSources = new Dictionary<string, IFeatureSource>(StringComparer.OrdinalIgnoreCase);
         var failedItemIds = new HashSet<string>();
 
         try
@@ -103,6 +104,11 @@ public sealed partial class SerialScheduler : ISchedulingEngine
                     try
                     {
                         var resolvedInputs = await ResolveInputsAsync(item, executionId, externalSources);
+                        var checkedCount = item.ExecutionPolicy.QcMode
+                            ? await GetPrimaryInputCountAsync(resolvedInputs, cancellationToken)
+                            : 0;
+                        if (item.ExecutionPolicy.QcMode)
+                            checkedCounts[item.Id] = checkedCount;
                         var context = new ExecutionContext(
                             plan.Id, executionId, _resultCache, _logger, _serviceProvider,
                             new PlanExecutionStatistics { StartTime = startTime },
@@ -120,6 +126,7 @@ public sealed partial class SerialScheduler : ISchedulingEngine
                                 ItemId = item.Id,
                                 OperatorId = item.OperatorId,
                                 Elapsed = itemSw.Elapsed,
+                                FeaturesProcessed = checkedCount,
                                 SuccessCount = 1
                             });
                         }
@@ -189,10 +196,12 @@ public sealed partial class SerialScheduler : ISchedulingEngine
         planSw.Stop();
         var endTime = DateTimeOffset.UtcNow;
 
-        var qcStats = allIssues.Count > 0
+        var hasQcItems = plan.Items.Any(item => item.ExecutionPolicy.QcMode);
+        var qcStats = hasQcItems
             ? new QcStatistics
             {
                 TotalIssues = allIssues.Count,
+                CheckedCountsByItem = checkedCounts,
                 IssuesBySeverity = allIssues
                     .GroupBy(i => i.Severity.ToString())
                     .ToDictionary(g => g.Key, g => g.Count()),
@@ -214,6 +223,16 @@ public sealed partial class SerialScheduler : ISchedulingEngine
         };
     }
 
+    private static async Task<long> GetPrimaryInputCountAsync(
+        IReadOnlyDictionary<string, IFeatureSource> inputs,
+        CancellationToken cancellationToken)
+    {
+        if (!inputs.TryGetValue("source", out var source))
+            return 0;
+
+        return await source.GetFeatureCountAsync();
+    }
+
     private async Task<IReadOnlyDictionary<string, IFeatureSource>> ResolveInputsAsync(
         AnalysisItem item,
         string executionId,
@@ -226,10 +245,12 @@ public sealed partial class SerialScheduler : ISchedulingEngine
             switch (binding.Type)
             {
                 case BindingType.External:
-                    if (externalSources.TryGetValue(key, out var existing))
-                        await existing.DisposeAsync();
-                    var source = _sourceFactory.CreateSource(binding);
-                    externalSources[key] = source;
+                    var sourceKey = Path.GetFullPath(binding.SourceId);
+                    if (!externalSources.TryGetValue(sourceKey, out var source))
+                    {
+                        source = _sourceFactory.CreateSource(binding);
+                        externalSources[sourceKey] = source;
+                    }
                     resolved[key] = source;
                     break;
 
@@ -271,7 +292,7 @@ public sealed partial class SerialScheduler : ISchedulingEngine
                 var sink = _sinkFactory.CreateSink(item.Output);
                 try
                 {
-                    var sinkSchema = new OutputSchema { Description = $"{item.Id}:{key}" };
+                    var sinkSchema = BuildOutputSchema(item.Id, key, featureSource);
                     await sink.InitializeAsync(sinkSchema, ct);
 
                     await foreach (var feature in featureSource.GetFeaturesAsync(cancellationToken: ct))
@@ -306,6 +327,22 @@ public sealed partial class SerialScheduler : ISchedulingEngine
     private static bool HasFailedUpstream(AnalysisItem item, HashSet<string> failedItemIds)
     {
         return item.Inputs.Values.Any(b => b is { Type: BindingType.Upstream } && failedItemIds.Contains(b.SourceId));
+    }
+
+    private static OutputSchema BuildOutputSchema(string itemId, string outputKey, IFeatureSource source)
+    {
+        var schema = source is IFeatureSchemaProvider provider
+            ? provider.Schema
+            : new FeatureSchemaMetadata { SpatialReference = source.SpatialReference };
+        var spatialReference = schema.SpatialReference ?? source.SpatialReference;
+        return new OutputSchema
+        {
+            Description = $"{itemId}:{outputKey}",
+            ProducedFields = schema.Fields,
+            ProducedGeometryType = schema.GeometryType,
+            SpatialReferenceWkid = spatialReference.Code > 0 ? spatialReference.Code : null,
+            SpatialReferenceWkt = string.IsNullOrWhiteSpace(spatialReference.Wkt) ? null : spatialReference.Wkt
+        };
     }
 
     private void RecordFailedItem(

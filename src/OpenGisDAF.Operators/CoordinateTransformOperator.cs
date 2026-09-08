@@ -64,7 +64,7 @@ public sealed class CoordinateTransformOperator : IOperator
             });
         }
 
-        var sourceEpsg = GetIntParam(config.Parameters, "source_epsg");
+        var sourceEpsg = OperatorHelper.GetIntParam(config.Parameters, "source_epsg");
         if (sourceEpsg is null || sourceEpsg <= 0)
         {
             errors.Add(new ValidationError
@@ -75,7 +75,7 @@ public sealed class CoordinateTransformOperator : IOperator
             });
         }
 
-        var targetEpsg = GetIntParam(config.Parameters, "target_epsg");
+        var targetEpsg = OperatorHelper.GetIntParam(config.Parameters, "target_epsg");
         if (targetEpsg is null || targetEpsg <= 0)
         {
             errors.Add(new ValidationError
@@ -110,11 +110,11 @@ public sealed class CoordinateTransformOperator : IOperator
             if (!inputs.TryGetValue("source", out var source))
                 return Fail(ErrorCode.CfgBindingIncomplete, "输入 'source' 未提供", sw.Elapsed, logs);
 
-            var sourceEpsg = GetIntParam(parameters, "source_epsg");
+            var sourceEpsg = OperatorHelper.GetIntParam(parameters, "source_epsg");
             if (sourceEpsg is null || sourceEpsg <= 0)
                 return Fail(ErrorCode.CfgParamOutOfRange, "参数 'source_epsg' 必须为正整数", sw.Elapsed, logs);
 
-            var targetEpsg = GetIntParam(parameters, "target_epsg");
+            var targetEpsg = OperatorHelper.GetIntParam(parameters, "target_epsg");
             if (targetEpsg is null || targetEpsg <= 0)
                 return Fail(ErrorCode.CfgParamOutOfRange, "参数 'target_epsg' 必须为正整数", sw.Elapsed, logs);
 
@@ -142,7 +142,13 @@ public sealed class CoordinateTransformOperator : IOperator
                 }
             }
 
-            var output = new InMemoryFeatureSource(transformedFeatures);
+            var output = new InMemoryFeatureSource(
+                transformedFeatures,
+                metadata: OperatorHelper.InheritSchema(
+                    source,
+                    spatialReference: new SpatialReference(
+                        targetEpsg.Value,
+                        SpatialReference.BuildWkt(targetEpsg.Value))));
 
             logs.Add(new ExecutionLogEntry
             {
@@ -176,20 +182,6 @@ public sealed class CoordinateTransformOperator : IOperator
             context.Logger.LogError(ex, "坐标系转换失败");
             return Fail(ErrorCode.RtUnexpected, $"坐标系转换失败: {ex.Message}", sw.Elapsed, logs);
         }
-    }
-
-    private static int? GetIntParam(IReadOnlyDictionary<string, object?> parameters, string name)
-    {
-        if (!parameters.TryGetValue(name, out var val)) return null;
-
-        return val switch
-        {
-            int i => i,
-            long l => l > int.MaxValue ? null : (int)l,
-            double d => d is >= int.MinValue and <= int.MaxValue ? (int)d : null,
-            string s when int.TryParse(s, out var i) => i,
-            _ => null
-        };
     }
 
     private static ExecutionResult Fail(string code, string message, TimeSpan elapsed, List<ExecutionLogEntry> logs)

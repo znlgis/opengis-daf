@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using OpenGisDAF.Adapters;
+using OpenGisDAF.Adapters.Utilities;
 using OpenGisDAF.Core;
 
 namespace OpenGisDAF.Execution;
@@ -7,15 +8,33 @@ namespace OpenGisDAF.Execution;
 public sealed class SourceFactory
 {
     private readonly ILoggerFactory _loggerFactory;
+    private readonly IConnectionEncryption _encryption;
 
-    public SourceFactory(ILoggerFactory loggerFactory)
+    public SourceFactory(ILoggerFactory loggerFactory, IConnectionEncryption encryption)
     {
         _loggerFactory = loggerFactory;
+        _encryption = encryption;
     }
 
     public IFeatureSource CreateSource(InputBinding binding)
     {
         var sourceId = binding.SourceId;
+
+        if (binding.ConnectionConfig is not null)
+        {
+            if (!string.Equals(binding.ConnectionConfig.AdapterType, "postgis", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(binding.ConnectionConfig.AdapterType, "postgiswriter", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new ArgumentException("结构化输入的 AdapterType 必须为 postgis。", nameof(binding));
+            }
+
+            return new PostgisFeatureSource(
+                binding.ConnectionConfig,
+                sourceId,
+                _loggerFactory.CreateLogger<PostgisFeatureSource>(),
+                _encryption);
+        }
+
         var extension = Path.GetExtension(sourceId)?.ToLowerInvariant();
 
         return extension switch

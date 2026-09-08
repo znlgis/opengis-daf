@@ -72,8 +72,13 @@ test(validation): add schema validation test cases
 运行测试：
 
 ```bash
-dotnet test
+dotnet build OpenGisDAF.slnx --configuration Release
+dotnet test OpenGisDAF.slnx --configuration Release --no-build
 ```
+
+`dotnet test` 在同一命令内构建时会报告「运行了零个测试」（退出码 5），这是当前工具链
+（.NET 10 SDK + xunit.v3 4.0 + Microsoft Testing Platform 2.3.3）的交互缺陷。
+CI 采用「先构建、再 `--no-build` 测试」的顺序，本地请保持一致。
 
 ## 开发环境
 

@@ -15,4 +15,16 @@ public static class GeometryTypeMapper
         Core.GeometryType.GeometryCollection => OguGeometryType.GEOMETRYCOLLECTION,
         _ => OguGeometryType.UNKNOWN
     };
+
+    public static Core.GeometryType? FromOguGeometryType(OguGeometryType type) => type switch
+    {
+        OguGeometryType.POINT => Core.GeometryType.Point,
+        OguGeometryType.MULTIPOINT => Core.GeometryType.MultiPoint,
+        OguGeometryType.LINESTRING => Core.GeometryType.LineString,
+        OguGeometryType.MULTILINESTRING => Core.GeometryType.MultiLineString,
+        OguGeometryType.POLYGON => Core.GeometryType.Polygon,
+        OguGeometryType.MULTIPOLYGON => Core.GeometryType.MultiPolygon,
+        OguGeometryType.GEOMETRYCOLLECTION => Core.GeometryType.GeometryCollection,
+        _ => null
+    };
 }

@@ -35,11 +35,7 @@ public sealed class DafTestHost : IDisposable
             services.AddScheduling();
         });
 
-        builder.ConfigureLogging(config =>
-        {
-            config.MinimumLevel.Warning()
-                  .WriteTo.Console(formatProvider: CultureInfo.InvariantCulture);
-        });
+        builder.ConfigureLogging(config => config.MinimumLevel.Warning());
 
         Services = builder.Build();
     }
