@@ -448,6 +448,33 @@ public sealed class UnitFixes
             throw new OperationCanceledException();
     }
 
+    [Fact]
+    public async Task NullValueFiller_TypeConflictWithActualField_FailsWithClearError()
+    {
+        // 回归 P1-001: field_type=String 但目标字段实际为 DateTime 时，默认值 'UNKNOWN'
+        // 无法转换为 DateTime，算子应在写入任何要素前失败并给出明确错误，而非把字符串
+        // 塞进 DateTime 字段导致下游 sink 部分失败、输出残缺。
+        var op = new NullValueFiller();
+        var source = new InMemoryFeatureSource(
+            new IFeature[] { Feature("1", ("COMPLETION", (object?)null)) },
+            metadata: new FeatureSchemaMetadata
+            {
+                Fields = [new FieldDefinition { Name = "COMPLETION", Type = FieldType.DateTime }]
+            });
+        var inputs = new Dictionary<string, IFeatureSource> { ["source"] = source };
+        var parameters = new Dictionary<string, object?>
+        {
+            ["target_field"] = "COMPLETION",
+            ["default_value"] = "UNKNOWN",
+            ["field_type"] = "String",
+        };
+
+        var result = await op.ExecuteAsync(inputs, parameters, NewContext(), CancellationToken.None);
+
+        result.Status.Should().Be(ExecutionStatus.Failed);
+        result.ErrorMessage.Should().Contain("COMPLETION");
+    }
+
     private sealed class FakeOperator : IOperator
     {
         public FakeOperator(string id, string category) =>

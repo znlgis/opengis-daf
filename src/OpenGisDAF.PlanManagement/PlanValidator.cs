@@ -158,7 +158,11 @@ public sealed partial class PlanValidator : IPlanValidator
         if (plan.Items is { Count: > 1 })
         {
             var validItems = plan.Items.Where(i => !string.IsNullOrWhiteSpace(i.Id)).ToList();
-            var itemMap = validItems.ToDictionary(i => i.Id);
+            // Duplicate item IDs are already reported by Rule 7; keep the first occurrence here so
+            // cycle detection does not throw an unwrapped ArgumentException on duplicates.
+            var itemMap = new Dictionary<string, AnalysisItem>(StringComparer.Ordinal);
+            foreach (var item in validItems)
+                itemMap.TryAdd(item.Id, item);
             ValidateDagNoCycle(validItems, itemMap, errors);
         }
     }
@@ -169,8 +173,16 @@ public sealed partial class PlanValidator : IPlanValidator
         AnalysisPlan plan, IOperatorPool operatorPool,
         List<ValidationError> errors, List<ValidationError> warnings)
     {
-        var itemMap = plan.Items.Where(i => !string.IsNullOrWhiteSpace(i.Id))
-                                .ToDictionary(i => i.Id);
+        // Build the item map tolerantly: duplicate item IDs are already reported as schema errors
+        // (Rule 7 in ValidateSchema), so keep the first occurrence here instead of throwing an
+        // unwrapped ArgumentException that would bypass the structured validation output.
+        var itemMap = new Dictionary<string, AnalysisItem>(StringComparer.Ordinal);
+        foreach (var item in plan.Items)
+        {
+            if (string.IsNullOrWhiteSpace(item.Id))
+                continue;
+            itemMap.TryAdd(item.Id, item);
+        }
 
         // Rule 20: SubPlan reference validation (Warning)
         ValidateSubPlans(plan, warnings);

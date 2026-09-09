@@ -46,7 +46,7 @@ public sealed class FieldCalculator : IOperator
                 Description = "目标字段类型",
                 Constraint = new ParameterConstraint
                 {
-                    AllowedValues = ["String", "Integer", "Double", "Boolean", "DateTime"]
+                    AllowedValues = ["String", "Integer", "Double", "Boolean", "Date", "DateTime"]
                 }
             }
         ],
@@ -105,7 +105,7 @@ public sealed class FieldCalculator : IOperator
             {
                 Severity = ValidationSeverity.Error,
                 Code = ErrorCode.CfgParamOutOfRange,
-                Message = $"无效的 field_type: '{fieldTypeStr}'，支持: String, Integer, Double, Boolean, DateTime。"
+                Message = $"无效的 field_type: '{fieldTypeStr}'，支持: String, Integer, Double, Boolean, Date, DateTime。"
             });
         }
 

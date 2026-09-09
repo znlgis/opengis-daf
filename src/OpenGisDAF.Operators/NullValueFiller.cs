@@ -42,7 +42,7 @@ public sealed class NullValueFiller : IOperator
                 Description = "目标字段的字段类型",
                 Constraint = new ParameterConstraint
                 {
-                    AllowedValues = ["String", "Integer", "Double", "Boolean", "DateTime"]
+                    AllowedValues = ["String", "Integer", "Double", "Boolean", "Date", "DateTime"]
                 }
             }
         ],
@@ -101,7 +101,7 @@ public sealed class NullValueFiller : IOperator
             {
                 Severity = ValidationSeverity.Error,
                 Code = ErrorCode.CfgParamOutOfRange,
-                Message = $"无效的 field_type: '{fieldTypeStr}'，支持: String, Integer, Double, Boolean, DateTime。"
+                Message = $"无效的 field_type: '{fieldTypeStr}'，支持: String, Integer, Double, Boolean, Date, DateTime。"
             });
         }
 
@@ -142,14 +142,39 @@ public sealed class NullValueFiller : IOperator
             var fieldTypeName = OperatorHelper.GetStringParam(parameters, "field_type");
             if (targetField is null || defaultStr is null || fieldTypeName is null)
                 return OperatorHelper.Fail("空值填充参数缺失或类型无效", sw.Elapsed, logs);
-            var fieldType = OperatorHelper.ParseFieldType(fieldTypeName);
-            if (fieldType is null)
+            var declaredFieldType = OperatorHelper.ParseFieldType(fieldTypeName);
+            if (declaredFieldType is null)
                 return OperatorHelper.Fail($"字段类型 '{fieldTypeName}' 无效", sw.Elapsed, logs);
-            var defaultValue = OperatorHelper.CoerceTo(defaultStr, fieldType.Value);
 
             if (!inputs.TryGetValue("source", out var source))
             {
                 return OperatorHelper.Fail("缺少输入 'source'", sw.Elapsed, logs);
+            }
+
+            // Coerce the default value to the target field's ACTUAL type (from the source schema)
+            // rather than the declared field_type. When field_type mismatches the real field type
+            // (e.g. field_type=String on a DateTime field), coercing to the declared type would
+            // write a string into a typed field and corrupt downstream sinks. Using the actual type
+            // either converts correctly or fails fast with a clear error before any feature is written.
+            var effectiveFieldType = declaredFieldType.Value;
+            if (source is IFeatureSchemaProvider schemaProvider)
+            {
+                var declaredField = schemaProvider.Schema.Fields
+                    .FirstOrDefault(f => string.Equals(f.Name, targetField, StringComparison.OrdinalIgnoreCase));
+                if (declaredField is not null && declaredField.Type != FieldType.Geometry)
+                    effectiveFieldType = declaredField.Type;
+            }
+
+            object? defaultValue;
+            try
+            {
+                defaultValue = OperatorHelper.CoerceTo(defaultStr, effectiveFieldType);
+            }
+            catch (Exception ex) when (ex is FormatException or InvalidCastException or OverflowException)
+            {
+                return OperatorHelper.Fail(
+                    $"默认值 '{defaultStr}' 无法转换为字段 '{targetField}' 的实际类型 {effectiveFieldType}。请检查 field_type 参数是否与目标字段类型一致。",
+                    sw.Elapsed, logs);
             }
 
             var results = new List<IFeature>();
@@ -199,7 +224,7 @@ public sealed class NullValueFiller : IOperator
                 {
                     ["output"] = new InMemoryFeatureSource(results, metadata: OperatorHelper.InheritSchema(
                         source,
-                        addedField: new FieldDefinition { Name = targetField, Type = fieldType.Value }))
+                        addedField: new FieldDefinition { Name = targetField, Type = declaredFieldType.Value }))
                 },
                 Elapsed = sw.Elapsed,
                 Logs = logs

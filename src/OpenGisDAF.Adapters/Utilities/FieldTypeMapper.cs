@@ -10,6 +10,7 @@ public static class FieldTypeMapper
         FieldType.String => FieldDataType.STRING,
         FieldType.Integer => FieldDataType.INTEGER,
         FieldType.Double => FieldDataType.DOUBLE,
+        FieldType.Date => FieldDataType.DATE,
         FieldType.DateTime => FieldDataType.DATETIME,
         FieldType.Boolean => FieldDataType.BOOLEAN,
         _ => FieldDataType.STRING
@@ -20,7 +21,8 @@ public static class FieldTypeMapper
         FieldDataType.STRING => FieldType.String,
         FieldDataType.INTEGER or FieldDataType.LONG => FieldType.Integer,
         FieldDataType.DOUBLE or FieldDataType.FLOAT => FieldType.Double,
-        FieldDataType.DATE or FieldDataType.DATETIME => FieldType.DateTime,
+        FieldDataType.DATE => FieldType.Date,
+        FieldDataType.DATETIME => FieldType.DateTime,
         FieldDataType.BOOLEAN => FieldType.Boolean,
         _ => FieldType.String
     };

@@ -164,6 +164,43 @@ public sealed class RemediationRegressionTests : IClassFixture<DafTestHost>
     }
 
     [Fact]
+    public async Task ShapefileSink_RoundTripsDateFieldAsDbfDate_NotString()
+    {
+        // 回归 P2-003: DBF Date(D) 字段经 SHP 写出后不得降级为 Character(String)。
+        // 修复前 FieldTypeMapper 将 DATE 折叠为 DateTime 再写为 DATETIME，GDAL SHP 驱动
+        // 无法创建 OFTDateTime 列，静默降级为 String 并输出 'YYYY/MM/DD HH:MM:SS' 文本。
+        var outputPath = Path.Combine(_host.TempDir, "date_roundtrip.shp");
+        var binding = new OutputBinding(OutputAdapterType.ShapefileWriter, outputPath);
+        var sink = new ShapefileFeatureSink(
+            binding,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<ShapefileFeatureSink>.Instance);
+
+        var schema = new OutputSchema
+        {
+            ProducedGeometryType = GeometryType.Point,
+            ProducedFields =
+            [
+                new FieldDefinition { Name = "COMPLETION", Type = FieldType.Date, Required = false }
+            ]
+        };
+        await sink.InitializeAsync(schema, TestContext.Current.CancellationToken);
+        await sink.WriteAsync(
+            new SimpleFeature("1", new Point(1, 2),
+                new Dictionary<string, object?> { ["COMPLETION"] = new DateTime(2014, 5, 14) }),
+            TestContext.Current.CancellationToken);
+        await sink.CompleteAsync(TestContext.Current.CancellationToken);
+        await sink.DisposeAsync();
+
+        File.Exists(outputPath).Should().BeTrue();
+
+        await using var readBack = new ShapefileFeatureSource(
+            outputPath,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<ShapefileFeatureSource>.Instance);
+        var readSchema = ((IFeatureSchemaProvider)readBack).Schema;
+        readSchema.Fields.Should().Contain(f => f.Name == "COMPLETION" && f.Type == FieldType.Date);
+    }
+
+    [Fact]
     public void WktConverter_PreservesThreeDimensionalCoordinates()
     {
         var geometry = new Point(10, 20, 30);
@@ -377,6 +414,54 @@ public sealed class RemediationRegressionTests : IClassFixture<DafTestHost>
     }
 
     [Fact]
+    public async Task PlanValidator_DuplicateItemId_ReportsStructuredErrorNotException()
+    {
+        // 回归 P2-001: 重复 itemId 曾触发 ValidateBusinessRules 中 ToDictionary 的未包装
+        // ArgumentException，绕过结构化校验输出。schema 校验（Rule 7）已能报告重复，
+        // business 校验应容忍重复并返回结构化 CfgSchemaInvalid 错误。
+        var plan = new AnalysisPlan
+        {
+            Id = "dup",
+            Name = "Duplicate",
+            Version = "1.0.0",
+            Items =
+            [
+                new AnalysisItem
+                {
+                    Id = "step1",
+                    OperatorId = "clip",
+                    Inputs = new Dictionary<string, InputBinding>
+                    {
+                        ["source"] = new InputBinding { Type = BindingType.External, SourceId = "a.geojson" },
+                        ["clip"] = new InputBinding { Type = BindingType.External, SourceId = "b.geojson" }
+                    },
+                    Output = new OutputBinding { AdapterType = OutputAdapterType.GeoJsonWriter, TargetPath = "out.geojson" }
+                },
+                new AnalysisItem
+                {
+                    Id = "step1",
+                    OperatorId = "buffer",
+                    Inputs = new Dictionary<string, InputBinding>
+                    {
+                        ["source"] = new InputBinding { Type = BindingType.External, SourceId = "a.geojson" }
+                    },
+                    Output = new OutputBinding { AdapterType = OutputAdapterType.GeoJsonWriter, TargetPath = "out2.geojson" }
+                }
+            ]
+        };
+
+        var validator = _host.Services.GetRequiredService<IPlanValidator>();
+        var result = await validator.ValidateAsync(
+            plan,
+            _host.Services.GetRequiredService<IOperatorPool>(),
+            TestContext.Current.CancellationToken);
+
+        result.Errors.Should().Contain(error =>
+            error.Code == ErrorCode.CfgSchemaInvalid &&
+            error.Message.Contains("Duplicate item ID 'step1'"));
+    }
+
+    [Fact]
     public async Task CliRun_ReturnsFailureExitCodeWhenItemFails()
     {
         var planPath = Path.Combine(_host.TempDir, "cli-failure.json");
@@ -398,7 +483,7 @@ public sealed class RemediationRegressionTests : IClassFixture<DafTestHost>
 
         using var process = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
         {
-            FileName = "dotnet",
+            FileName = ResolveDotNetExecutable(),
             Arguments = $"run --project \"{Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "OpenGisDAF.Cli"))}\" --no-build -- run --plan \"{planPath}\"",
             WorkingDirectory = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..")),
             RedirectStandardOutput = true,
@@ -412,6 +497,63 @@ public sealed class RemediationRegressionTests : IClassFixture<DafTestHost>
         await process.WaitForExitAsync(TestContext.Current.CancellationToken);
 
         process.ExitCode.Should().NotBe(0);
+    }
+
+    // Resolves the dotnet host executable without assuming it is on the system PATH. Checks
+    // DOTNET_ROOT first, then the dotnet --info install location, then falls back to PATH.
+    private static string ResolveDotNetExecutable()
+    {
+        var candidates = new List<string>();
+
+        var dotnetRoot = Environment.GetEnvironmentVariable("DOTNET_ROOT");
+        if (!string.IsNullOrWhiteSpace(dotnetRoot))
+        {
+            candidates.Add(Path.Combine(dotnetRoot, "dotnet.exe"));
+            candidates.Add(Path.Combine(dotnetRoot, "dotnet"));
+        }
+
+        try
+        {
+            using var probe = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "dotnet",
+                Arguments = "--info",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            });
+            if (probe is not null)
+            {
+                var info = probe.StandardOutput.ReadToEnd();
+                probe.WaitForExit();
+                var basePathLine = info.Split('\n')
+                    .Select(l => l.Trim())
+                    .FirstOrDefault(l => l.StartsWith("Base Path:", StringComparison.OrdinalIgnoreCase));
+                if (basePathLine is not null)
+                {
+                    var basePath = basePathLine[(basePathLine.IndexOf(':') + 1)..].Trim();
+                    candidates.Add(Path.Combine(basePath, "dotnet.exe"));
+                    candidates.Add(Path.Combine(basePath, "dotnet"));
+                }
+            }
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+            // dotnet not on PATH either; fall through to PATH lookup below.
+        }
+
+        candidates.Add("dotnet");
+
+        foreach (var candidate in candidates)
+        {
+            if (candidate == "dotnet")
+                return candidate;
+            if (File.Exists(candidate))
+                return candidate;
+        }
+
+        return "dotnet";
     }
 
     [Fact]

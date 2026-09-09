@@ -32,6 +32,7 @@ internal static class OperatorHelper
         "integer" => FieldType.Integer,
         "double" => FieldType.Double,
         "boolean" => FieldType.Boolean,
+        "date" => FieldType.Date,
         "datetime" => FieldType.DateTime,
         _ => null
     };
@@ -46,6 +47,7 @@ internal static class OperatorHelper
             FieldType.Integer => Convert.ToInt32(value, CultureInfo.InvariantCulture),
             FieldType.Double => Convert.ToDouble(value, CultureInfo.InvariantCulture),
             FieldType.Boolean => Convert.ToBoolean(value, CultureInfo.InvariantCulture),
+            FieldType.Date => Convert.ToDateTime(value, CultureInfo.InvariantCulture),
             FieldType.DateTime => Convert.ToDateTime(value, CultureInfo.InvariantCulture),
             _ => value.ToString()!
         };
