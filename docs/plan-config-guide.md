@@ -67,6 +67,8 @@
 | `formatOptions` | object? | 格式化选项（编码、小数位数等） |
 | `isIntermediate` | bool | 是否中间结果（可被缓存复用） |
 
+> **PostGIS 输出无覆盖策略：** 当目标表已存在时，写入会失败并报错（`Layer already exists`），框架不会静默覆盖已有表。这是有意的安全设计——避免误覆盖生产数据。如需重新写入，请先手动删除目标表或改用新的表名。
+
 ### ItemExecutionPolicy
 
 | 字段 | 类型 | 默认值 | 说明 |

@@ -521,7 +521,43 @@ public sealed class RemediationRegressionTests : IClassFixture<DafTestHost>
 
         result.Errors.Should().Contain(error =>
             error.Code == ErrorCode.CfgParamOutOfRange &&
-            error.Message.Contains("missing required parameter 'distance'"));
+            error.Message.Contains("distance"));
+    }
+
+    [Fact]
+    public async Task PlanValidator_MissingRequiredInput_ReportsStructuredError()
+    {
+        // 回归 D4-01: 缺少必需输入（如 buffer 的 source）应在校验期报告结构化错误，
+        // 而非延迟到运行时。此前 PlanValidator 从不调用算子 Validate()，缺输入方案能通过校验。
+        var plan = new AnalysisPlan
+        {
+            Id = "missing-input",
+            Name = "Missing input",
+            Version = "1.0.0",
+            Items =
+            [
+                new AnalysisItem
+                {
+                    Id = "buf",
+                    OperatorId = "buffer",
+                    Parameters = new Dictionary<string, object?>
+                    {
+                        ["distance"] = 50.0
+                    },
+                    Output = new OutputBinding { AdapterType = OutputAdapterType.GeoJsonWriter, TargetPath = "out.geojson" }
+                }
+            ]
+        };
+
+        var validator = _host.Services.GetRequiredService<IPlanValidator>();
+        var result = await validator.ValidateAsync(
+            plan,
+            _host.Services.GetRequiredService<IOperatorPool>(),
+            TestContext.Current.CancellationToken);
+
+        result.Errors.Should().Contain(error =>
+            error.Code == ErrorCode.CfgBindingIncomplete &&
+            error.Message.Contains("source"));
     }
 
     [Fact]

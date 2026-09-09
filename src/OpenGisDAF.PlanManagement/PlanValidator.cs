@@ -1,7 +1,5 @@
 namespace OpenGisDAF.PlanManagement;
 
-using System.Globalization;
-using System.Text.Json;
 using System.Text.RegularExpressions;
 using OpenGisDAF.Core;
 
@@ -202,10 +200,27 @@ public sealed partial class PlanValidator : IPlanValidator
                     $"Operator '{item.OperatorId}' not found in operator pool.", loc));
             }
 
-            // Rule 15a: Required parameter presence check (Error) — runs regardless of item.Parameters.Count
-            if (op is not null)
+            // Rule 15a: Delegate to the operator's own Validate() (Error) — the operator is the
+            // authoritative source for required-parameter presence, parameter constraints, and
+            // required-input presence. Runs regardless of item.Parameters.Count. Guarded on
+            // item.Inputs being non-null because operator Validate() implementations call
+            // config.Inputs.ContainsKey (a null Inputs would NRE; null Inputs is already a Rule 8
+            // schema error).
+            if (op is not null && item.Inputs is not null)
             {
-                ValidateRequiredParameters(item, op.Metadata, errors, loc);
+                try
+                {
+                    var opResult = op.Validate(item);
+                    foreach (var e in opResult.Errors)
+                        errors.Add(e with { Location = string.IsNullOrEmpty(e.Location) ? loc : e.Location });
+                    foreach (var w in opResult.Warnings)
+                        warnings.Add(w with { Location = string.IsNullOrEmpty(w.Location) ? loc : w.Location });
+                }
+                catch (Exception ex)
+                {
+                    errors.Add(NewError(ErrorCode.CfgSchemaInvalid,
+                        $"Operator '{item.OperatorId}' validation threw an exception: {ex.Message}", loc));
+                }
             }
 
             // Rule 16: Input binding completeness (Error) — Upstream SourceId must point to existing item
@@ -223,20 +238,6 @@ public sealed partial class PlanValidator : IPlanValidator
                                 $"Upstream binding '{inputKey}' in item '{item.Id}' references non-existent item '{binding.SourceId}'.", loc));
                         }
                     }
-                }
-            }
-
-            // Rule 18: Parameter boundary validation
-            if (item.Parameters.Count > 0)
-            {
-                if (op is not null)
-                {
-                    ValidateParameterConstraints(item, op.Metadata, errors, warnings);
-                }
-                else
-                {
-                    warnings.Add(NewWarning(ErrorCode.CfgOperatorNotFound,
-                        $"Cannot validate parameters for item '{item.Id}': operator '{item.OperatorId}' not found.", loc));
                 }
             }
         }
@@ -317,88 +318,6 @@ public sealed partial class PlanValidator : IPlanValidator
         return false;
     }
 
-    // ---- Rule 15a: Required parameter presence validation ----
-
-    private static void ValidateRequiredParameters(
-        AnalysisItem item, OperatorMetadata metadata,
-        List<ValidationError> errors, string loc)
-    {
-        foreach (var def in metadata.Parameters.Where(p => p.Required))
-        {
-            var present = item.Parameters.TryGetValue(def.Name, out var value)
-                          && value is not null
-                          && value.ToString() is { Length: > 0 };
-
-            if (!present)
-            {
-                errors.Add(NewError(ErrorCode.CfgParamOutOfRange,
-                    $"Item '{item.Id}' is missing required parameter '{def.Name}'.", loc));
-            }
-        }
-    }
-
-    // ---- Rule 18: Parameter constraint validation ----
-
-    private static void ValidateParameterConstraints(
-        AnalysisItem item, OperatorMetadata metadata,
-        List<ValidationError> errors, List<ValidationError> warnings)
-    {
-        var paramDefMap = metadata.Parameters.ToDictionary(p => p.Name);
-
-        foreach (var (paramName, paramValue) in item.Parameters)
-        {
-            if (!paramDefMap.TryGetValue(paramName, out var def) || def.Constraint is null)
-                continue;
-
-            var constraint = def.Constraint;
-
-            // Numeric bounds
-            if (constraint.MinValue is not null || constraint.MaxValue is not null)
-            {
-                var numVal = TryToDouble(paramValue);
-                if (numVal.HasValue)
-                {
-                    if (constraint.MinValue.HasValue && numVal.Value < constraint.MinValue.Value)
-                        errors.Add(NewError(ErrorCode.CfgParamOutOfRange,
-                            $"Parameter '{paramName}' of item '{item.Id}' value {numVal.Value} below minimum {constraint.MinValue.Value}.", $"item.{item.Id}"));
-
-                    if (constraint.MaxValue.HasValue && numVal.Value > constraint.MaxValue.Value)
-                        errors.Add(NewError(ErrorCode.CfgParamOutOfRange,
-                            $"Parameter '{paramName}' of item '{item.Id}' value {numVal.Value} exceeds maximum {constraint.MaxValue.Value}.", $"item.{item.Id}"));
-                }
-            }
-
-            // Pattern validation
-            if (constraint.Pattern is not null && paramValue is string strVal)
-            {
-                try
-                {
-                    if (!Regex.IsMatch(strVal, constraint.Pattern, RegexOptions.None, TimeSpan.FromMilliseconds(500)))
-                        errors.Add(NewError(ErrorCode.CfgParamOutOfRange,
-                            $"Parameter '{paramName}' of item '{item.Id}' value '{strVal}' does not match pattern '{constraint.Pattern}'.", $"item.{item.Id}"));
-                }
-                catch (RegexParseException)
-                {
-                    // Silently skip invalid regex patterns in constraints
-                }
-                catch (RegexMatchTimeoutException)
-                {
-                    warnings.Add(NewWarning(ErrorCode.CfgParamOutOfRange,
-                        $"Parameter '{paramName}' of item '{item.Id}' pattern validation timed out for value '{strVal}'.", $"item.{item.Id}"));
-                }
-            }
-
-            // AllowedValues validation
-            if (constraint.AllowedValues is { Count: > 0 })
-            {
-                var allowedStr = paramValue?.ToString();
-                if (allowedStr is not null && !constraint.AllowedValues.Contains(allowedStr))
-                    errors.Add(NewError(ErrorCode.CfgParamOutOfRange,
-                        $"Parameter '{paramName}' of item '{item.Id}' value '{allowedStr}' is not in allowed values: [{string.Join(", ", constraint.AllowedValues)}].", $"item.{item.Id}"));
-            }
-        }
-    }
-
     // ---- Rule 19: Output binding completeness for non-final items ----
 
     private static void ValidateOutputBindings(
@@ -452,33 +371,6 @@ public sealed partial class PlanValidator : IPlanValidator
     }
 
     // ===== Helpers =====
-
-    /// <summary>
-    /// Attempts to convert a parameter value to <see cref="double"/>.
-    /// Handles <see cref="int"/>, <see cref="long"/>, <see cref="double"/>, <see cref="float"/>,
-    /// numeric <see cref="string"/>, and <see cref="JsonElement"/> (number or string).
-    /// </summary>
-    private static double? TryToDouble(object? value)
-    {
-        return value switch
-        {
-            null => null,
-            double d => d,
-            int i => i,
-            long l => l,
-            float f => f,
-            short s => s,
-            byte b => b,
-            string s => double.TryParse(s, NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out var parsed) ? parsed : null,
-            JsonElement je => je.ValueKind switch
-            {
-                JsonValueKind.Number when je.TryGetDouble(out var jd) => jd,
-                JsonValueKind.String when double.TryParse(je.GetString(), NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out var js) => js,
-                _ => null
-            },
-            _ => null
-        };
-    }
 
     private static ValidationError NewError(string code, string message, string? location) =>
         new() { Severity = ValidationSeverity.Error, Code = code, Message = message, Location = location };
