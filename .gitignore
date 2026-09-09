@@ -88,6 +88,9 @@ project.fragment.lock.json
 artifacts/
 .artifacts/
 
+# demo 运行产物（由 run-demo 脚本生成，勿提交）
+demo/output/
+
 # ASP.NET Scaffolding
 ScaffoldingReadMe.txt
 

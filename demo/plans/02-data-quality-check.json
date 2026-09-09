@@ -1,0 +1,62 @@
+{
+  "id": "demo-02-data-quality-check",
+  "name": "数据质量检查（几何 / 属性 / 地块重叠 / 用地越界）",
+  "version": "1.0.0",
+  "group": "demo",
+  "items": [
+    {
+      "id": "qc-roads-geometry",
+      "operatorId": "geometry_validity_checker",
+      "inputs": {
+        "source": { "type": "external", "sourceId": "data/roads.geojson" }
+      },
+      "output": { "adapterType": "console" },
+      "executionPolicy": { "qcMode": true }
+    },
+    {
+      "id": "qc-landuse-geometry",
+      "operatorId": "geometry_validity_checker",
+      "inputs": {
+        "source": { "type": "external", "sourceId": "data/landuse.geojson" }
+      },
+      "output": { "adapterType": "console" },
+      "executionPolicy": { "qcMode": true }
+    },
+    {
+      "id": "qc-schools-attributes",
+      "operatorId": "attribute_completeness_checker",
+      "inputs": {
+        "source": { "type": "external", "sourceId": "data/schools.geojson" }
+      },
+      "parameters": {
+        "required_fields": "school_name,principal,phone,capacity,built_year"
+      },
+      "output": { "adapterType": "console" },
+      "executionPolicy": { "qcMode": true }
+    },
+    {
+      "id": "qc-landuse-overlap",
+      "operatorId": "intersect_check",
+      "inputs": {
+        "source": { "type": "external", "sourceId": "data/landuse.geojson" }
+      },
+      "parameters": { "use_second_input": false },
+      "output": { "adapterType": "console" },
+      "executionPolicy": { "qcMode": true }
+    },
+    {
+      "id": "qc-road-in-ecozone",
+      "operatorId": "containment_check",
+      "inputs": {
+        "source": { "type": "external", "sourceId": "data/roads.geojson" },
+        "target": { "type": "external", "sourceId": "data/landuse.geojson" }
+      },
+      "parameters": { "relationship": "within" },
+      "output": { "adapterType": "console" },
+      "executionPolicy": { "qcMode": true }
+    }
+  ],
+  "executionPolicy": {
+    "failurePolicy": "stopOnAny"
+  }
+}

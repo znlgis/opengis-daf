@@ -1,0 +1,32 @@
+{
+  "id": "demo-05-postgis-output",
+  "name": "PostGIS 输出模板（需要真实数据库连接，默认不运行）",
+  "version": "1.0.0",
+  "group": "demo",
+  "items": [
+    {
+      "id": "clip-landuse-to-boundary",
+      "operatorId": "clip",
+      "inputs": {
+        "source": { "type": "external", "sourceId": "data/landuse.geojson" },
+        "clip": { "type": "external", "sourceId": "data/city_boundary.geojson" }
+      },
+      "output": {
+        "adapterType": "postgis",
+        "targetPath": "demo_landuse_clipped",
+        "connectionConfig": {
+          "dataSourceId": "demo-postgis",
+          "adapterType": "postgis",
+          "host": "<你的数据库主机>",
+          "port": 5432,
+          "database": "<你的数据库名>",
+          "userName": "<你的用户名>",
+          "encryptedPassword": "<用 daf 加密工具生成的密文，切勿填写明文密码>"
+        }
+      }
+    }
+  ],
+  "executionPolicy": {
+    "failurePolicy": "stopOnAny"
+  }
+}

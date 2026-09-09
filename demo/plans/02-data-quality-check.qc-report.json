@@ -1,0 +1,158 @@
+{
+  "totalScore": 83.67,
+  "ruleStats": {
+    "qc-roads-geometry": {
+      "ruleId": "qc-roads-geometry",
+      "totalChecked": 6,
+      "passed": 6,
+      "failed": 0,
+      "passRate": 1
+    },
+    "qc-landuse-geometry": {
+      "ruleId": "qc-landuse-geometry",
+      "totalChecked": 5,
+      "passed": 4,
+      "failed": 1,
+      "passRate": 0.8
+    },
+    "qc-schools-attributes": {
+      "ruleId": "qc-schools-attributes",
+      "totalChecked": 8,
+      "passed": 6,
+      "failed": 2,
+      "passRate": 0.75
+    },
+    "qc-landuse-overlap": {
+      "ruleId": "qc-landuse-overlap",
+      "totalChecked": 5,
+      "passed": 4,
+      "failed": 1,
+      "passRate": 0.8
+    },
+    "qc-road-in-ecozone": {
+      "ruleId": "qc-road-in-ecozone",
+      "totalChecked": 6,
+      "passed": 5,
+      "failed": 1,
+      "passRate": 0.8333
+    }
+  },
+  "issues": [
+    {
+      "issueId": "4418711d-dee2-40dc-8f4d-17ea0ba5e446",
+      "planId": "demo-02-data-quality-check",
+      "executionId": "6504227b7dd34bd8b9b3ec67603d19a0",
+      "itemId": "qc-roads-geometry",
+      "featureId": "4",
+      "issueType": "GEOM_NOT_SIMPLE",
+      "severity": "warning",
+      "description": "线几何存在自相交（非简单几何），但仍满足有效性规则",
+      "contextData": {
+        "feature_id": "4",
+        "geometry_type": "LineString"
+      },
+      "violationGeometry": "LINESTRING (110.22 30.16, 110.26 30.2, 110.22 30.2, 110.26 30.16)"
+    },
+    {
+      "issueId": "c4b1c2d3-3c56-4f46-9bd2-a8e4d124360c",
+      "planId": "demo-02-data-quality-check",
+      "executionId": "6504227b7dd34bd8b9b3ec67603d19a0",
+      "itemId": "qc-landuse-geometry",
+      "featureId": "4",
+      "issueType": "GEOM_INVALID",
+      "severity": "error",
+      "description": "几何无效: Self-intersection",
+      "contextData": {
+        "feature_id": "4",
+        "geometry_type": "Polygon"
+      },
+      "violationGeometry": "POLYGON ((110.23 30.22, 110.27 30.22, 110.23 30.25, 110.27 30.25, 110.23 30.22))"
+    },
+    {
+      "issueId": "510a7345-cfbc-4c07-80e5-cfbeed877b11",
+      "planId": "demo-02-data-quality-check",
+      "executionId": "6504227b7dd34bd8b9b3ec67603d19a0",
+      "itemId": "qc-schools-attributes",
+      "featureId": "2",
+      "issueType": "ATTR_MISSING",
+      "severity": "error",
+      "description": "必填字段 'principal' 缺失（值为 null）",
+      "contextData": {
+        "field": "principal",
+        "feature_id": "2"
+      },
+      "violationGeometry": null
+    },
+    {
+      "issueId": "4358b8e9-959e-4ad6-a4d8-4ecc961c521f",
+      "planId": "demo-02-data-quality-check",
+      "executionId": "6504227b7dd34bd8b9b3ec67603d19a0",
+      "itemId": "qc-schools-attributes",
+      "featureId": "3",
+      "issueType": "ATTR_EMPTY",
+      "severity": "warning",
+      "description": "必填字段 'phone' 为空字符串",
+      "contextData": {
+        "field": "phone",
+        "feature_id": "3"
+      },
+      "violationGeometry": null
+    },
+    {
+      "issueId": "1d451087-363a-4a2a-a2c6-b1ea32ceeec1",
+      "planId": "demo-02-data-quality-check",
+      "executionId": "6504227b7dd34bd8b9b3ec67603d19a0",
+      "itemId": "qc-schools-attributes",
+      "featureId": "5",
+      "issueType": "ATTR_MISSING",
+      "severity": "error",
+      "description": "必填字段 'principal' 缺失（值为 null）",
+      "contextData": {
+        "field": "principal",
+        "feature_id": "5"
+      },
+      "violationGeometry": null
+    },
+    {
+      "issueId": "4bc19f5c-87c3-4f4e-8ec7-c59a09e14b1f",
+      "planId": "demo-02-data-quality-check",
+      "executionId": "6504227b7dd34bd8b9b3ec67603d19a0",
+      "itemId": "qc-landuse-overlap",
+      "featureId": "0",
+      "issueType": "INTERSECT",
+      "severity": "error",
+      "description": "要素 0 与要素 1 相交",
+      "contextData": {
+        "source_feature_id": "0",
+        "target_feature_id": "1",
+        "source_wkt": "POLYGON ((110.22 30.17, 110.27 30.17, 110.27 30.21, 110.22 30.21, 110.22 30.17))",
+        "target_wkt": "POLYGON ((110.26 30.18, 110.3 30.18, 110.3 30.21, 110.26 30.21, 110.26 30.18))"
+      },
+      "violationGeometry": "POLYGON ((110.22 30.17, 110.27 30.17, 110.27 30.21, 110.22 30.21, 110.22 30.17))"
+    },
+    {
+      "issueId": "42188b5f-2954-4eea-96c1-af8919a7867d",
+      "planId": "demo-02-data-quality-check",
+      "executionId": "6504227b7dd34bd8b9b3ec67603d19a0",
+      "itemId": "qc-road-in-ecozone",
+      "featureId": "5",
+      "issueType": "WITHIN",
+      "severity": "error",
+      "description": "要素 5 位于要素 3 内部",
+      "contextData": {
+        "source_feature_id": "5",
+        "target_feature_id": "3",
+        "source_wkt": "LINESTRING (110.34 30.23, 110.39 30.26)",
+        "target_wkt": "POLYGON ((110.33 30.22, 110.4 30.22, 110.4 30.27, 110.33 30.27, 110.33 30.22))"
+      },
+      "violationGeometry": "LINESTRING (110.34 30.23, 110.39 30.26)"
+    }
+  ],
+  "metadata": {
+    "planId": "demo-02-data-quality-check",
+    "planVersion": "1.0.0",
+    "operatorVersion": "1.0.0.0",
+    "dataSourceVersions": {},
+    "executionTime": "2026-09-09T07:31:35.2663909+00:00"
+  }
+}

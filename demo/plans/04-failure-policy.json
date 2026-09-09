@@ -1,0 +1,48 @@
+{
+  "id": "demo-04-failure-policy",
+  "name": "失败策略演示（失败项 + 独立成功项 + 上游跳过项）",
+  "version": "1.0.0",
+  "group": "demo",
+  "items": [
+    {
+      "id": "step-broken-input",
+      "operatorId": "buffer",
+      "inputs": {
+        "source": { "type": "external", "sourceId": "data/missing-file.geojson" }
+      },
+      "parameters": { "distance": 500 },
+      "output": {
+        "adapterType": "geojson",
+        "targetPath": "output/demo04/should-not-exist.geojson"
+      }
+    },
+    {
+      "id": "step-independent-ok",
+      "operatorId": "field_calculator",
+      "inputs": {
+        "source": { "type": "external", "sourceId": "data/schools.geojson" }
+      },
+      "parameters": {
+        "target_field": "note",
+        "expression": "\"独立演示项\"",
+        "field_type": "String"
+      },
+      "output": { "adapterType": "console" }
+    },
+    {
+      "id": "step-skipped-dependent",
+      "operatorId": "clip",
+      "inputs": {
+        "source": { "type": "upstream", "sourceId": "step-broken-input", "outputKey": "output" },
+        "clip": { "type": "external", "sourceId": "data/city_boundary.geojson" }
+      },
+      "output": {
+        "adapterType": "geojson",
+        "targetPath": "output/demo04/also-should-not-exist.geojson"
+      }
+    }
+  ],
+  "executionPolicy": {
+    "failurePolicy": "continueIndependent"
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "id": "demo-plugin-road-length",
+  "name": "道路长度统计（内置算子 + 插件算子协作）",
+  "version": "1.0.0",
+  "group": "demo-plugin",
+  "items": [
+    {
+      "id": "transform-roads",
+      "operatorId": "coordinate_transform",
+      "inputs": {
+        "source": { "type": "external", "sourceId": "data/roads.geojson" }
+      },
+      "parameters": { "source_epsg": 4326, "target_epsg": 3857 },
+      "output": { "adapterType": "console", "isIntermediate": true }
+    },
+    {
+      "id": "calc-road-length",
+      "operatorId": "length_calculator",
+      "inputs": {
+        "source": { "type": "upstream", "sourceId": "transform-roads", "outputKey": "output" }
+      },
+      "parameters": { "target_field": "length_km" },
+      "output": {
+        "adapterType": "geojson",
+        "targetPath": "output/plugin-demo/roads-with-length.geojson"
+      }
+    }
+  ],
+  "executionPolicy": {
+    "failurePolicy": "stopOnAny"
+  }
+}

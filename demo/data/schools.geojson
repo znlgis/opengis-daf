@@ -1,0 +1,150 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "id": "s01",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          110.24,
+          30.18
+        ]
+      },
+      "properties": {
+        "school_name": "新星市第一小学",
+        "principal": "王建国",
+        "phone": "0717-6600001",
+        "capacity": 1200,
+        "built_year": 1998
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "s02",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          110.28,
+          30.2
+        ]
+      },
+      "properties": {
+        "school_name": "新星市第二小学",
+        "principal": "李秀兰",
+        "phone": "0717-6600002",
+        "capacity": 960,
+        "built_year": 2005
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "s03",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          110.33,
+          30.17
+        ]
+      },
+      "properties": {
+        "school_name": "新星市实验中学",
+        "principal": null,
+        "phone": "0717-6600003",
+        "capacity": 1800,
+        "built_year": 2001
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "s04",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          110.35,
+          30.25
+        ]
+      },
+      "properties": {
+        "school_name": "新星市外国语学校",
+        "principal": "陈静",
+        "phone": "",
+        "capacity": 1500,
+        "built_year": 2012
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "s05",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          110.21,
+          30.24
+        ]
+      },
+      "properties": {
+        "school_name": "新星市第九中学",
+        "principal": "周强",
+        "phone": "0717-6600005",
+        "capacity": 2100,
+        "built_year": 1985
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "s06",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          110.29,
+          30.16
+        ]
+      },
+      "properties": {
+        "school_name": "明德国际学校",
+        "principal": null,
+        "phone": "0717-6600006",
+        "capacity": 800,
+        "built_year": 2018
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "s07",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          110.32,
+          30.22,
+          45.5
+        ]
+      },
+      "properties": {
+        "school_name": "启航科技高中",
+        "principal": "孙梅",
+        "phone": "0717-6600007",
+        "capacity": 1600,
+        "built_year": 2015
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "s08",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          110.15,
+          30.25
+        ]
+      },
+      "properties": {
+        "school_name": "云湖小学",
+        "principal": "赵磊",
+        "phone": "0717-6600008",
+        "capacity": 700,
+        "built_year": 2020
+      }
+    }
+  ]
+}

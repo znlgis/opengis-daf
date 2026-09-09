@@ -1,0 +1,94 @@
+{
+  "id": "demo-01-school-service-area",
+  "name": "学校服务区分析（坐标转换 → 缓冲 → 裁剪 → 字段标注 → 空值填充）",
+  "version": "1.0.0",
+  "group": "demo",
+  "items": [
+    {
+      "id": "transform-schools",
+      "operatorId": "coordinate_transform",
+      "inputs": {
+        "source": { "type": "external", "sourceId": "data/schools.geojson" }
+      },
+      "parameters": { "source_epsg": 4326, "target_epsg": 3857 },
+      "output": { "adapterType": "console", "isIntermediate": true }
+    },
+    {
+      "id": "transform-boundary",
+      "operatorId": "coordinate_transform",
+      "inputs": {
+        "source": { "type": "external", "sourceId": "data/city_boundary.geojson" }
+      },
+      "parameters": { "source_epsg": 4326, "target_epsg": 3857 },
+      "output": { "adapterType": "console", "isIntermediate": true }
+    },
+    {
+      "id": "buffer-schools",
+      "operatorId": "buffer",
+      "inputs": {
+        "source": { "type": "upstream", "sourceId": "transform-schools", "outputKey": "output" }
+      },
+      "parameters": { "distance": 800 },
+      "output": {
+        "adapterType": "geojson",
+        "targetPath": "output/demo01/school-buffer-800m.geojson",
+        "isIntermediate": true
+      },
+      "executionPolicy": {
+        "timeout": "00:05:00",
+        "maxRetries": 1,
+        "retryInterval": "00:00:02"
+      }
+    },
+    {
+      "id": "clip-service-area",
+      "operatorId": "clip",
+      "inputs": {
+        "source": { "type": "upstream", "sourceId": "buffer-schools", "outputKey": "output" },
+        "clip": { "type": "upstream", "sourceId": "transform-boundary", "outputKey": "output" }
+      },
+      "output": {
+        "adapterType": "geojson",
+        "targetPath": "output/demo01/school-service-area.geojson",
+        "isIntermediate": true
+      }
+    },
+    {
+      "id": "label-zones",
+      "operatorId": "field_calculator",
+      "inputs": {
+        "source": { "type": "upstream", "sourceId": "clip-service-area", "outputKey": "output" }
+      },
+      "parameters": {
+        "target_field": "zone_label",
+        "expression": "\"服务区-{school_name}\"",
+        "field_type": "String"
+      },
+      "output": {
+        "adapterType": "geojson",
+        "targetPath": "output/demo01/school-service-area-labeled.geojson",
+        "isIntermediate": true
+      }
+    },
+    {
+      "id": "fill-principal",
+      "operatorId": "null_value_filler",
+      "inputs": {
+        "source": { "type": "upstream", "sourceId": "label-zones", "outputKey": "output" }
+      },
+      "parameters": {
+        "target_field": "principal",
+        "default_value": "（未登记）",
+        "field_type": "String"
+      },
+      "output": {
+        "adapterType": "geojson",
+        "targetPath": "output/demo01/school-service-area-final.geojson"
+      }
+    }
+  ],
+  "executionPolicy": {
+    "failurePolicy": "stopOnAny",
+    "maxParallelism": 4
+  }
+}

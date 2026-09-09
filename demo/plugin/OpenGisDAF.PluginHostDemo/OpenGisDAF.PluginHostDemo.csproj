@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    插件宿演示程序：在同一进程内完成"导入插件算子、校验方案、执行方案"的完整链路。
+
+    背景：`daf operator import`（指定 dll 参数）在 CLI 进程内加载插件，但 `daf run`
+    每次都是新进程，导入的算子不会跨进程保留。要让插件算子真实参与方案
+    执行，需要这样一个同进程编程宿主。学习者可以把本程序当作编写自己
+    的 DAF 宿主（服务、批处理、API 后端）的起点。
+  -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\OpenGisDAF.Core\OpenGisDAF.Core.csproj" />
+    <ProjectReference Include="..\..\..\src\OpenGisDAF.Adapters\OpenGisDAF.Adapters.csproj" />
+    <ProjectReference Include="..\..\..\src\OpenGisDAF.Operators\OpenGisDAF.Operators.csproj" />
+    <ProjectReference Include="..\..\..\src\OpenGisDAF.Execution\OpenGisDAF.Execution.csproj" />
+    <ProjectReference Include="..\..\..\src\OpenGisDAF.Scheduling\OpenGisDAF.Scheduling.csproj" />
+    <ProjectReference Include="..\..\..\src\OpenGisDAF.PlanManagement\OpenGisDAF.PlanManagement.csproj" />
+    <ProjectReference Include="..\..\..\src\OpenGisDAF.Infrastructure\OpenGisDAF.Infrastructure.csproj" />
+  </ItemGroup>
+
+</Project>

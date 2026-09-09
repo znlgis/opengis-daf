@@ -1,0 +1,44 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "id": "boundary",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              110.2,
+              30.14
+            ],
+            [
+              110.38,
+              30.12
+            ],
+            [
+              110.42,
+              30.24
+            ],
+            [
+              110.3,
+              30.3
+            ],
+            [
+              110.18,
+              30.26
+            ],
+            [
+              110.2,
+              30.14
+            ]
+          ]
+        ]
+      },
+      "properties": {
+        "name": "新星市研究区",
+        "code": "XXS-STUDY-001"
+      }
+    }
+  ]
+}

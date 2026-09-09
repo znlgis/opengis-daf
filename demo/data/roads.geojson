@@ -1,0 +1,153 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "id": "r01",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            110.2,
+            30.19
+          ],
+          [
+            110.3,
+            30.19
+          ],
+          [
+            110.38,
+            30.19
+          ]
+        ]
+      },
+      "properties": {
+        "road_name": "明珠大道",
+        "road_class": "主干道",
+        "lanes": 6
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "r02",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            110.24,
+            30.15
+          ],
+          [
+            110.24,
+            30.25
+          ]
+        ]
+      },
+      "properties": {
+        "road_name": "学府路",
+        "road_class": "次干道",
+        "lanes": 4
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "r03",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            110.34,
+            30.14
+          ],
+          [
+            110.4,
+            30.2
+          ]
+        ]
+      },
+      "properties": {
+        "road_name": "滨江路",
+        "road_class": "次干道",
+        "lanes": 4
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "r04",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            110.19,
+            30.27
+          ],
+          [
+            110.28,
+            30.27
+          ],
+          [
+            110.36,
+            30.27
+          ]
+        ]
+      },
+      "properties": {
+        "road_name": "环城北路",
+        "road_class": "主干道",
+        "lanes": 6
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "r05",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            110.22,
+            30.16
+          ],
+          [
+            110.26,
+            30.2
+          ],
+          [
+            110.22,
+            30.2
+          ],
+          [
+            110.26,
+            30.16
+          ]
+        ]
+      },
+      "properties": {
+        "road_name": "翠柳巷",
+        "road_class": "支路",
+        "lanes": 2
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "r06",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            110.34,
+            30.23
+          ],
+          [
+            110.39,
+            30.26
+          ]
+        ]
+      },
+      "properties": {
+        "road_name": "云湖联络线",
+        "road_class": "支路",
+        "lanes": 2
+      }
+    }
+  ]
+}

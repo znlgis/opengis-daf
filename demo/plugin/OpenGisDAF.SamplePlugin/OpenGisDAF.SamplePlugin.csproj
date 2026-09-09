@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    示例插件算子项目。
+
+    关键点（插件开发的经典坑，务必保留这些配置）：
+    - Private="false" + ExcludeAssets="runtime"：不把 OpenGisDAF.Core 及其依赖
+      复制到插件输出目录。运行时由 PluginManager 的 AssemblyDependencyResolver
+      解析失败后回退到宿主已加载的同名程序集，从而保证 IOperator 等接口类型
+      在插件与宿主之间是同一个 Type，否则插件算子会被静默跳过
+      （"No IOperator implementations found"）。
+    - 插件只依赖 OpenGisDAF.Core 的公共契约，不引用 Adapters/Operators 等实现层，
+      以此演示"最小依赖面"的插件开发方式。
+  -->
+
+  <PropertyGroup>
+    <!-- 与 src/OpenGisDAF.Operators 保持一致的分析器豁免 -->
+    <NoWarn>CA1873;CA1848</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\OpenGisDAF.Core\OpenGisDAF.Core.csproj"
+                      Private="false" ExcludeAssets="runtime" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.11" ExcludeAssets="runtime" />
+    <PackageReference Include="NetTopologySuite" Version="2.6.0" ExcludeAssets="runtime" />
+  </ItemGroup>
+
+</Project>

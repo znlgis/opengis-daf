@@ -1,0 +1,190 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "id": "p01",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              110.22,
+              30.17
+            ],
+            [
+              110.27,
+              30.17
+            ],
+            [
+              110.27,
+              30.21
+            ],
+            [
+              110.22,
+              30.21
+            ],
+            [
+              110.22,
+              30.17
+            ]
+          ]
+        ]
+      },
+      "properties": {
+        "landuse_type": "居住用地",
+        "plot_no": "R-001",
+        "area_ha": 25.6,
+        "owner": "新星城建集团"
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "p02",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              110.26,
+              30.18
+            ],
+            [
+              110.3,
+              30.18
+            ],
+            [
+              110.3,
+              30.21
+            ],
+            [
+              110.26,
+              30.21
+            ],
+            [
+              110.26,
+              30.18
+            ]
+          ]
+        ]
+      },
+      "properties": {
+        "landuse_type": "商业用地",
+        "plot_no": "B-002",
+        "area_ha": 12.3,
+        "owner": "星汇商业"
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "p03",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              110.31,
+              30.15
+            ],
+            [
+              110.36,
+              30.15
+            ],
+            [
+              110.36,
+              30.19
+            ],
+            [
+              110.31,
+              30.19
+            ],
+            [
+              110.31,
+              30.15
+            ]
+          ]
+        ]
+      },
+      "properties": {
+        "landuse_type": "工业用地",
+        "plot_no": "M-003",
+        "area_ha": 48.9,
+        "owner": "新星工业园"
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "p04",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              110.33,
+              30.22
+            ],
+            [
+              110.4,
+              30.22
+            ],
+            [
+              110.4,
+              30.27
+            ],
+            [
+              110.33,
+              30.27
+            ],
+            [
+              110.33,
+              30.22
+            ]
+          ]
+        ]
+      },
+      "properties": {
+        "landuse_type": "生态保护区",
+        "plot_no": "G-004",
+        "area_ha": 35.0,
+        "owner": "市林业局"
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "p05",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              110.23,
+              30.22
+            ],
+            [
+              110.27,
+              30.22
+            ],
+            [
+              110.23,
+              30.25
+            ],
+            [
+              110.27,
+              30.25
+            ],
+            [
+              110.23,
+              30.22
+            ]
+          ]
+        ]
+      },
+      "properties": {
+        "landuse_type": "待平整地块",
+        "plot_no": "X-005",
+        "area_ha": 8.8,
+        "owner": null
+      }
+    }
+  ]
+}

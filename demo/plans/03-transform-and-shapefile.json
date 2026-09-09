@@ -1,0 +1,52 @@
+{
+  "id": "demo-03-transform-and-shapefile",
+  "name": "坐标转换与多格式输出（GeoJSON → Shapefile → 再读取）",
+  "version": "1.0.0",
+  "group": "demo",
+  "items": [
+    {
+      "id": "export-landuse-shp",
+      "operatorId": "coordinate_transform",
+      "inputs": {
+        "source": { "type": "external", "sourceId": "data/landuse.geojson" }
+      },
+      "parameters": { "source_epsg": 4326, "target_epsg": 3857 },
+      "output": {
+        "adapterType": "shapefile",
+        "targetPath": "output/demo03/landuse-3857.shp"
+      }
+    },
+    {
+      "id": "read-shp-calc",
+      "operatorId": "field_calculator",
+      "inputs": {
+        "source": { "type": "external", "sourceId": "output/demo03/landuse-3857.shp" }
+      },
+      "parameters": {
+        "target_field": "zone_desc",
+        "expression": "\"地块 {plot_no} | 面积 {area_ha} 公顷\"",
+        "field_type": "String"
+      },
+      "output": { "adapterType": "console" }
+    },
+    {
+      "id": "fill-owner",
+      "operatorId": "null_value_filler",
+      "inputs": {
+        "source": { "type": "external", "sourceId": "data/landuse.geojson" }
+      },
+      "parameters": {
+        "target_field": "owner",
+        "default_value": "待核实",
+        "field_type": "String"
+      },
+      "output": {
+        "adapterType": "geojson",
+        "targetPath": "output/demo03/landuse-owner-filled.geojson"
+      }
+    }
+  ],
+  "executionPolicy": {
+    "failurePolicy": "stopOnAny"
+  }
+}
