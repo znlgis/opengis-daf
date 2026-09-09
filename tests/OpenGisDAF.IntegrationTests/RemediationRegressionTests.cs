@@ -500,7 +500,7 @@ public sealed class RemediationRegressionTests : IClassFixture<DafTestHost>
     }
 
     // Resolves the dotnet host executable without assuming it is on the system PATH. Checks
-    // DOTNET_ROOT first, then the dotnet --info install location, then falls back to PATH.
+    // DOTNET_ROOT first, then the default install locations, then falls back to PATH.
     private static string ResolveDotNetExecutable()
     {
         var candidates = new List<string>();
@@ -512,35 +512,16 @@ public sealed class RemediationRegressionTests : IClassFixture<DafTestHost>
             candidates.Add(Path.Combine(dotnetRoot, "dotnet"));
         }
 
-        try
+        // Default install locations used by the official Windows installer. Note: the SDK
+        // directory reported by `dotnet --info` Base Path does not contain dotnet.exe, so it is
+        // not a usable candidate here.
+        var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+        var programFilesX86 = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
+        foreach (var root in new[] { programFiles, programFilesX86 })
         {
-            using var probe = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-            {
-                FileName = "dotnet",
-                Arguments = "--info",
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            });
-            if (probe is not null)
-            {
-                var info = probe.StandardOutput.ReadToEnd();
-                probe.WaitForExit();
-                var basePathLine = info.Split('\n')
-                    .Select(l => l.Trim())
-                    .FirstOrDefault(l => l.StartsWith("Base Path:", StringComparison.OrdinalIgnoreCase));
-                if (basePathLine is not null)
-                {
-                    var basePath = basePathLine[(basePathLine.IndexOf(':') + 1)..].Trim();
-                    candidates.Add(Path.Combine(basePath, "dotnet.exe"));
-                    candidates.Add(Path.Combine(basePath, "dotnet"));
-                }
-            }
-        }
-        catch (System.ComponentModel.Win32Exception)
-        {
-            // dotnet not on PATH either; fall through to PATH lookup below.
+            if (string.IsNullOrWhiteSpace(root))
+                continue;
+            candidates.Add(Path.Combine(root, "dotnet", "dotnet.exe"));
         }
 
         candidates.Add("dotnet");
