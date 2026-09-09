@@ -12,4 +12,7 @@
   <Folder Name="/tests/">
     <Project Path="tests/OpenGisDAF.IntegrationTests/OpenGisDAF.IntegrationTests.csproj" />
   </Folder>
+  <Folder Name="/extern/">
+    <Project Path="extern/opengis-utils-for-net/src/OpenGIS.Utils/OpenGIS.Utils.csproj" />
+  </Folder>
 </Solution>
