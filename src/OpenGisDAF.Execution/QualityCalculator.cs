@@ -9,15 +9,20 @@ public sealed class QualityCalculator
         QualityReportConfig? config = null,
         IReadOnlyDictionary<string, long>? checkedCounts = null)
     {
-        if (issuesByItem.Count == 0)
+        if (issuesByItem.Count == 0 && (checkedCounts is null || checkedCounts.Count == 0))
             return 100.0;
 
         var weights = config?.RuleWeights ?? new Dictionary<string, double>();
         var totalWeightedScore = 0.0;
         var totalWeight = 0.0;
 
-        foreach (var (itemId, issues) in issuesByItem)
+        var ruleIds = new HashSet<string>(issuesByItem.Keys, StringComparer.Ordinal);
+        if (checkedCounts is not null)
+            ruleIds.UnionWith(checkedCounts.Keys);
+
+        foreach (var itemId in ruleIds)
         {
+            var issues = issuesByItem.GetValueOrDefault(itemId) ?? new List<IssueRecord>();
             var weight = weights.TryGetValue(itemId, out var w) ? w : 1.0;
             totalWeight += weight;
 
@@ -46,28 +51,27 @@ public sealed class QualityCalculator
     {
         var stats = new List<RuleLevelStats>();
 
-        foreach (var (itemId, issues) in issuesByItem)
+        var ruleIds = new HashSet<string>(issuesByItem.Keys, StringComparer.Ordinal);
+        if (checkedCounts is not null)
+            ruleIds.UnionWith(checkedCounts.Keys);
+
+        foreach (var itemId in ruleIds)
         {
+            var issues = issuesByItem.GetValueOrDefault(itemId) ?? new List<IssueRecord>();
+            var totalChecked = checkedCounts?.GetValueOrDefault(itemId, issues.Count) ?? issues.Count;
+            var failed = issues.Where(i => i.Severity == IssueSeverity.Error)
+                .Select(i => i.FeatureId)
+                .Distinct(StringComparer.Ordinal)
+                .Count();
+
             stats.Add(new RuleLevelStats
             {
                 RuleId = itemId,
-                TotalChecked = checkedCounts?.GetValueOrDefault(itemId, issues.Count) ?? issues.Count,
-                Passed = Math.Max(0, (checkedCounts?.GetValueOrDefault(itemId, issues.Count) ?? issues.Count)
-                    - issues.Where(i => i.Severity == IssueSeverity.Error)
-                        .Select(i => i.FeatureId)
-                        .Distinct(StringComparer.Ordinal)
-                        .Count()),
-                Failed = issues.Where(i => i.Severity == IssueSeverity.Error)
-                    .Select(i => i.FeatureId)
-                    .Distinct(StringComparer.Ordinal)
-                    .Count(),
-                PassRate = (checkedCounts?.GetValueOrDefault(itemId, issues.Count) ?? issues.Count) > 0
-                    ? Math.Round((double)Math.Max(0, (checkedCounts?.GetValueOrDefault(itemId, issues.Count) ?? issues.Count)
-                        - issues.Where(i => i.Severity == IssueSeverity.Error)
-                            .Select(i => i.FeatureId)
-                            .Distinct(StringComparer.Ordinal)
-                            .Count())
-                        / (checkedCounts?.GetValueOrDefault(itemId, issues.Count) ?? issues.Count), 4)
+                TotalChecked = totalChecked,
+                Passed = Math.Max(0, totalChecked - failed),
+                Failed = failed,
+                PassRate = totalChecked > 0
+                    ? Math.Round((double)Math.Max(0, totalChecked - failed) / totalChecked, 4)
                     : 1.0
             });
         }

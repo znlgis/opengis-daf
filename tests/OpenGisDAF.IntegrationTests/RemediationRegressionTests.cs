@@ -462,6 +462,109 @@ public sealed class RemediationRegressionTests : IClassFixture<DafTestHost>
     }
 
     [Fact]
+    public void QualityCalculator_IncludesZeroIssueRulesInScoreAndStats()
+    {
+        // 回归 D3-07: 全通过的规则（在 checkedCounts 中但无 issues）此前被排除在评分与
+        // ruleStats 之外，导致总分系统性偏低且 ruleStats 缺失该规则。
+        var issue = new IssueRecord
+        {
+            PlanId = "p",
+            ExecutionId = "e",
+            ItemId = "rule1",
+            FeatureId = "f1",
+            IssueType = "ATTR_MISSING",
+            Severity = IssueSeverity.Error
+        };
+        var issuesByItem = new Dictionary<string, List<IssueRecord>> { ["rule1"] = [issue] };
+        var checkedCounts = new Dictionary<string, long> { ["rule1"] = 10, ["rule2"] = 5 };
+
+        var score = QualityCalculator.CalculateScore(issuesByItem, checkedCounts: checkedCounts);
+        var stats = QualityCalculator.CalculateRuleStats(issuesByItem, checkedCounts);
+
+        // rule1: 1/10 失败 → passRate 0.9; rule2: 0/5 失败 → passRate 1.0
+        score.Should().Be(95.0);
+        stats.Should().Contain(s =>
+            s.RuleId == "rule2" && s.TotalChecked == 5 && s.Passed == 5 &&
+            s.Failed == 0 && s.PassRate == 1.0);
+    }
+
+    [Fact]
+    public async Task PlanValidator_MissingRequiredParameter_ReportsStructuredError()
+    {
+        // 回归 D3-06: 缺少必需参数（如 buffer 的 distance）应在校验期报告结构化错误，
+        // 而非延迟到运行时。即使 item.Parameters 为空字典也应被捕获。
+        var plan = new AnalysisPlan
+        {
+            Id = "missing-param",
+            Name = "Missing param",
+            Version = "1.0.0",
+            Items =
+            [
+                new AnalysisItem
+                {
+                    Id = "buf",
+                    OperatorId = "buffer",
+                    Inputs = new Dictionary<string, InputBinding>
+                    {
+                        ["source"] = new InputBinding { Type = BindingType.External, SourceId = "a.geojson" }
+                    },
+                    Output = new OutputBinding { AdapterType = OutputAdapterType.GeoJsonWriter, TargetPath = "out.geojson" }
+                }
+            ]
+        };
+
+        var validator = _host.Services.GetRequiredService<IPlanValidator>();
+        var result = await validator.ValidateAsync(
+            plan,
+            _host.Services.GetRequiredService<IOperatorPool>(),
+            TestContext.Current.CancellationToken);
+
+        result.Errors.Should().Contain(error =>
+            error.Code == ErrorCode.CfgParamOutOfRange &&
+            error.Message.Contains("missing required parameter 'distance'"));
+    }
+
+    [Fact]
+    public async Task ShapefileSink_PreservesValueForLongFieldName()
+    {
+        // 回归 D3-04: 字段名超过 10 字符时 GDAL SHP 驱动会截断(launder)字段名。此前
+        // GdalWriter 按原名查索引失败导致值被静默丢弃；修复后按字段序号映射，值应保留。
+        var outputPath = Path.Combine(_host.TempDir, "long_field.shp");
+        var binding = new OutputBinding(OutputAdapterType.ShapefileWriter, outputPath);
+        var sink = new ShapefileFeatureSink(
+            binding,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<ShapefileFeatureSink>.Instance);
+
+        var schema = new OutputSchema
+        {
+            ProducedGeometryType = GeometryType.Point,
+            ProducedFields =
+            [
+                new FieldDefinition { Name = "VERY_LONG_FIELD_NAME", Type = FieldType.String, Required = false }
+            ]
+        };
+        await sink.InitializeAsync(schema, TestContext.Current.CancellationToken);
+        await sink.WriteAsync(
+            new SimpleFeature("1", new Point(1, 2),
+                new Dictionary<string, object?> { ["VERY_LONG_FIELD_NAME"] = "hello" }),
+            TestContext.Current.CancellationToken);
+        await sink.CompleteAsync(TestContext.Current.CancellationToken);
+        await sink.DisposeAsync();
+
+        File.Exists(outputPath).Should().BeTrue();
+
+        await using var readBack = new ShapefileFeatureSource(
+            outputPath,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<ShapefileFeatureSource>.Instance);
+        var features = new List<IFeature>();
+        await foreach (var f in readBack.GetFeaturesAsync(cancellationToken: TestContext.Current.CancellationToken))
+            features.Add(f);
+
+        features.Should().ContainSingle();
+        features[0].Attributes.Values.Should().Contain("hello");
+    }
+
+    [Fact]
     public async Task CliRun_ReturnsFailureExitCodeWhenItemFails()
     {
         var planPath = Path.Combine(_host.TempDir, "cli-failure.json");

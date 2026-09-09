@@ -91,6 +91,11 @@ public sealed class ShapefileFeatureSink : IFeatureSink
 
         foreach (var fieldDef in schema.ProducedFields)
         {
+            if (fieldDef.Name.Length > 10)
+                _logger.LogWarning(
+                    "字段名 '{FieldName}' 超过 SHP/DBF 10 字符限制，写出时将截断为前 10 字符，下游读取该 SHP 时字段名会改变",
+                    fieldDef.Name);
+
             layer.Fields.Add(new OguField
             {
                 Name = fieldDef.Name,

@@ -77,6 +77,8 @@
 | `timeout` | string | "00:30:00" | 超时时间 |
 | `exponentialBackoff` | bool | true | 是否指数退避 |
 
+> `maxRetries` 仅对算子**执行阶段**的运行时错误（`ERR_RT_*`，如超时、内存不足、未受控异常）生效；输入/数据源解析失败（`SCH_*`，如文件不存在、上游结果不可用）在调度层直接失败，不重试且无"未重试"提示。
+
 ### PlanExecutionPolicy
 
 | 字段 | 类型 | 默认值 | 说明 |

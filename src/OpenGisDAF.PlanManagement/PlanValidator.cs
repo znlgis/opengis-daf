@@ -202,6 +202,12 @@ public sealed partial class PlanValidator : IPlanValidator
                     $"Operator '{item.OperatorId}' not found in operator pool.", loc));
             }
 
+            // Rule 15a: Required parameter presence check (Error) — runs regardless of item.Parameters.Count
+            if (op is not null)
+            {
+                ValidateRequiredParameters(item, op.Metadata, errors, loc);
+            }
+
             // Rule 16: Input binding completeness (Error) — Upstream SourceId must point to existing item
             if (item.Inputs is not null)
             {
@@ -309,6 +315,26 @@ public sealed partial class PlanValidator : IPlanValidator
 
         color[nodeId] = 2; // completed
         return false;
+    }
+
+    // ---- Rule 15a: Required parameter presence validation ----
+
+    private static void ValidateRequiredParameters(
+        AnalysisItem item, OperatorMetadata metadata,
+        List<ValidationError> errors, string loc)
+    {
+        foreach (var def in metadata.Parameters.Where(p => p.Required))
+        {
+            var present = item.Parameters.TryGetValue(def.Name, out var value)
+                          && value is not null
+                          && value.ToString() is { Length: > 0 };
+
+            if (!present)
+            {
+                errors.Add(NewError(ErrorCode.CfgParamOutOfRange,
+                    $"Item '{item.Id}' is missing required parameter '{def.Name}'.", loc));
+            }
+        }
     }
 
     // ---- Rule 18: Parameter constraint validation ----

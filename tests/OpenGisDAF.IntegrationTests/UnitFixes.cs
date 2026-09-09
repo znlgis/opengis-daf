@@ -475,6 +475,64 @@ public sealed class UnitFixes
         result.ErrorMessage.Should().Contain("COMPLETION");
     }
 
+    [Fact]
+    public async Task FieldCalculator_AllFeaturesFailExpression_ReturnsFailure()
+    {
+        // 回归 D3-01: 表达式对所有要素求值失败时，算子应降级为 Failed 并给出明确错误，
+        // 而非静默返回 Success（此前每个要素的 FormatException 被吞掉，仅记 WRN 日志）。
+        var op = new FieldCalculator();
+        var source = new InMemoryFeatureSource(new IFeature[] { Feature("1", ("a", 1)) });
+        var inputs = new Dictionary<string, IFeatureSource> { ["source"] = source };
+        var parameters = new Dictionary<string, object?>
+        {
+            ["target_field"] = "result",
+            ["expression"] = "abc", // 非法算术表达式，每个要素都会抛 FormatException
+            ["field_type"] = "String",
+        };
+
+        var result = await op.ExecuteAsync(inputs, parameters, NewContext(), CancellationToken.None);
+
+        result.Status.Should().Be(ExecutionStatus.Failed);
+        result.ErrorMessage.Should().Contain("全部 1 个要素");
+    }
+
+    [Fact]
+    public async Task BufferOperator_NegativeDistance_ReturnsFailure()
+    {
+        // 回归 D3-08: 负缓冲距离应作为错误拒绝，而非警告后静默产生空几何并返回 Success。
+        var op = new BufferOperator();
+        var source = new InMemoryFeatureSource(new IFeature[] { Feature("1") });
+        var inputs = new Dictionary<string, IFeatureSource> { ["source"] = source };
+        var parameters = new Dictionary<string, object?> { ["distance"] = -10.0 };
+
+        var result = await op.ExecuteAsync(inputs, parameters, NewContext(), CancellationToken.None);
+
+        result.Status.Should().Be(ExecutionStatus.Failed);
+        result.ErrorCode.Should().Be(ErrorCode.CfgParamOutOfRange);
+        result.ErrorMessage.Should().Contain("缓冲距离必须大于 0");
+    }
+
+    [Fact]
+    public void BufferOperator_Validate_NegativeDistance_IsErrorNotWarning()
+    {
+        // 回归 D3-08: Validate 阶段 distance<=0 应为 Error（此前为 Warning）。
+        var op = new BufferOperator();
+        var item = new AnalysisItem("b", "buffer",
+            new OutputBinding(OutputAdapterType.ConsoleWriter, "out"))
+        {
+            Parameters = new Dictionary<string, object?> { ["distance"] = -10.0 },
+            Inputs = new Dictionary<string, InputBinding>
+            {
+                ["source"] = new InputBinding { Type = BindingType.External, SourceId = "a.geojson" }
+            }
+        };
+
+        var result = op.Validate(item);
+
+        result.Errors.Should().Contain(e => e.Code == ErrorCode.CfgParamOutOfRange);
+        result.Warnings.Should().BeEmpty();
+    }
+
     private sealed class FakeOperator : IOperator
     {
         public FakeOperator(string id, string category) =>

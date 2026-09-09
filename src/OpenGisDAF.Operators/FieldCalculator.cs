@@ -157,6 +157,7 @@ public sealed class FieldCalculator : IOperator
 
             var results = new List<IFeature>();
             var count = 0;
+            var failedCount = 0;
 
             await foreach (var feature in source.GetFeaturesAsync(cancellationToken: cancellationToken))
             {
@@ -173,6 +174,7 @@ public sealed class FieldCalculator : IOperator
                         "[FieldCalculator] 表达式求值异常: feature={FeatureId}, expr={Expr}",
                         feature.Id, expression);
                     computed = null;
+                    failedCount++;
                 }
 
                 var attrs = new Dictionary<string, object?>(feature.Attributes) { [targetField] = computed };
@@ -183,6 +185,21 @@ public sealed class FieldCalculator : IOperator
             context.Logger.LogInformation(
                 "[FieldCalculator] 处理完成: {Count} 个要素，目标字段 '{Field}'，表达式 '{Expr}'",
                 count, targetField, expression);
+
+            if (count > 0 && failedCount == count)
+                return OperatorHelper.Fail($"全部 {count} 个要素表达式求值失败", sw.Elapsed, logs);
+
+            if (failedCount > 0)
+            {
+                logs.Add(new ExecutionLogEntry
+                {
+                    ExecutionId = context.ExecutionId,
+                    ItemId = string.Empty,
+                    OperatorId = Metadata.Id,
+                    Level = LogLevel.Warning,
+                    Message = $"{failedCount} / {count} 个要素求值失败"
+                });
+            }
 
             logs.Add(new ExecutionLogEntry
             {

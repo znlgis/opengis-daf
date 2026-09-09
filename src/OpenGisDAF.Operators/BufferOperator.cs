@@ -27,7 +27,8 @@ public sealed class BufferOperator : IOperator
                 Name = "distance",
                 Type = "double",
                 Required = true,
-                Description = "缓冲距离（单位与坐标系一致）。"
+                Description = "缓冲距离（单位与坐标系一致）。",
+                Constraint = new ParameterConstraint { MinValue = 0 }
             }
         ],
         InputSchema = new InputSchema
@@ -62,11 +63,11 @@ public sealed class BufferOperator : IOperator
         {
             if (distance <= 0)
             {
-                warnings.Add(new ValidationError
+                errors.Add(new ValidationError
                 {
-                    Severity = ValidationSeverity.Warning,
+                    Severity = ValidationSeverity.Error,
                     Code = ErrorCode.CfgParamOutOfRange,
-                    Message = $"缓冲距离为 {distance}，小于等于零可能导致空结果。"
+                    Message = $"缓冲距离为 {distance}，必须大于 0。"
                 });
             }
         }
@@ -118,6 +119,14 @@ public sealed class BufferOperator : IOperator
                     sw.Elapsed,
                     ErrorCode.CfgParamOutOfRange,
                     "参数 'distance' 缺失或不是有效的数值。");
+            }
+
+            if (distance <= 0)
+            {
+                return FailureResult(
+                    sw.Elapsed,
+                    ErrorCode.CfgParamOutOfRange,
+                    "缓冲距离必须大于 0。");
             }
 
             if (!inputs.TryGetValue("source", out var source))
