@@ -158,6 +158,7 @@ public sealed class FieldCalculator : IOperator
             var results = new List<IFeature>();
             var count = 0;
             var failedCount = 0;
+            string? writeKey = null;
 
             await foreach (var feature in source.GetFeaturesAsync(cancellationToken: cancellationToken))
             {
@@ -177,7 +178,13 @@ public sealed class FieldCalculator : IOperator
                     failedCount++;
                 }
 
-                var attrs = new Dictionary<string, object?>(feature.Attributes) { [targetField] = computed };
+                if (writeKey is null)
+                {
+                    OperatorHelper.TryResolveAttributeKey(feature.Attributes, targetField, out var resolvedKey);
+                    writeKey = resolvedKey;
+                }
+
+                var attrs = new Dictionary<string, object?>(feature.Attributes) { [writeKey] = computed };
                 results.Add(new SimpleFeature(feature.Id, feature.Geometry, attrs));
                 count++;
             }
@@ -251,7 +258,7 @@ public sealed class FieldCalculator : IOperator
             var inner = FieldRefRegex.Replace(expression[1..^1], match =>
             {
                 var refName = match.Groups[1].Value;
-                var raw = attrs.TryGetValue(refName, out var val) ? val : null;
+                var raw = OperatorHelper.TryGetAttributeValue(attrs, refName, out var val) ? val : null;
                 return FormatValue(raw);
             });
             return SafeCoerceTo(inner, targetType);
@@ -263,7 +270,7 @@ public sealed class FieldCalculator : IOperator
         if (SingleFieldRefRegex.IsMatch(trimmed))
         {
             var refName = trimmed[1..^1];
-            var rawValue = attrs.TryGetValue(refName, out var v) ? v : null;
+            var rawValue = OperatorHelper.TryGetAttributeValue(attrs, refName, out var v) ? v : null;
             return SafeCoerceTo(rawValue, targetType);
         }
 
@@ -271,7 +278,7 @@ public sealed class FieldCalculator : IOperator
         var substituted = FieldRefRegex.Replace(expression, match =>
         {
             var refName = match.Groups[1].Value;
-            var raw = attrs.TryGetValue(refName, out var val) ? val : null;
+            var raw = OperatorHelper.TryGetAttributeValue(attrs, refName, out var val) ? val : null;
             return FormatValue(raw);
         });
 

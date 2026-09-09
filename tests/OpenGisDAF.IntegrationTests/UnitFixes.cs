@@ -533,6 +533,159 @@ public sealed class UnitFixes
         result.Warnings.Should().BeEmpty();
     }
 
+    [Fact]
+    public async Task FieldCalculator_FieldRef_IsCaseInsensitive()
+    {
+        // 回归 T6.3: PostGIS 读回后列名折叠为小写(name)，用大写 {NAME} 引用曾静默得空。
+        // 字段引用应大小写不敏感命中既有列。
+        var features = await RunCalculatorAsync(
+            Feature("1", ("name", "Aberdeen Tunnel")), "{NAME}", "String", targetField: "copied");
+
+        features.Should().HaveCount(1);
+        features[0].Attributes["copied"].Should().Be("Aberdeen Tunnel");
+    }
+
+    [Fact]
+    public async Task FieldCalculator_ArithmeticFieldRef_IsCaseInsensitive()
+    {
+        // 回归 T6.3: 算术表达式中的 {字段} 引用同样应大小写不敏感（小写列 shape_stle，大写引用）。
+        var features = await RunCalculatorAsync(
+            Feature("1", ("shape_stle", 1500.0)), "{SHAPE_STLe}/1000", "Double", targetField: "len_km");
+
+        features[0].Attributes["len_km"].Should().Be(1.5);
+    }
+
+    [Fact]
+    public async Task FieldCalculator_TargetFieldDifferentCase_OverwritesInPlace()
+    {
+        // 回归: target_field 与既有列仅大小写不同时，应原位覆盖既有列，而非新增重复列。
+        var features = await RunCalculatorAsync(
+            Feature("1", ("name", "old")), "\"new\"", "String", targetField: "NAME");
+
+        features.Should().HaveCount(1);
+        var attrs = features[0].Attributes;
+        attrs.Should().ContainKey("name");
+        attrs.Should().NotContainKey("NAME");
+        attrs["name"].Should().Be("new");
+    }
+
+    [Fact]
+    public async Task NullValueFiller_TargetFieldDifferentCase_FillsExistingColumnWithoutDuplicate()
+    {
+        // 回归: PostGIS 源列名小写(remark)，target_field 用大写 REMARK 时，
+        // 曾新增重复列 REMARK 且原 remark 的 null 未被填充。应原位填充既有小写列。
+        var op = new NullValueFiller();
+        var source = new InMemoryFeatureSource(new IFeature[] { Feature("1", ("remark", (object?)null)) });
+        var inputs = new Dictionary<string, IFeatureSource> { ["source"] = source };
+        var parameters = new Dictionary<string, object?>
+        {
+            ["target_field"] = "REMARK",
+            ["default_value"] = "N/A",
+            ["field_type"] = "String",
+        };
+
+        var result = await op.ExecuteAsync(inputs, parameters, NewContext(), CancellationToken.None);
+        result.Status.Should().Be(ExecutionStatus.Success);
+
+        var output = (IFeatureSource)result.Outputs["output"]!;
+        var features = new List<IFeature>();
+        await foreach (var f in output.GetFeaturesAsync(cancellationToken: TestContext.Current.CancellationToken)) features.Add(f);
+
+        features.Should().HaveCount(1);
+        var attrs = features[0].Attributes;
+        attrs.Should().ContainKey("remark");
+        attrs.Should().NotContainKey("REMARK");
+        attrs["remark"].Should().Be("N/A");
+    }
+
+    [Fact]
+    public async Task AttributeCompletenessChecker_RequiredFieldDifferentCase_NoFalseMissing()
+    {
+        // 回归: PostGIS 源列名小写(name)，required_fields 用大写 NAME 时，
+        // 曾对每个要素误报 ATTR_MISSING（把完整图层判为不合格）。字段匹配应大小写不敏感。
+        var op = new AttributeCompletenessChecker();
+        var source = new InMemoryFeatureSource(new IFeature[] { Feature("1", ("name", "Aberdeen")) });
+        var inputs = new Dictionary<string, IFeatureSource> { ["source"] = source };
+        var parameters = new Dictionary<string, object?> { ["required_fields"] = "NAME" };
+
+        var result = await op.ExecuteAsync(inputs, parameters, NewContext(), CancellationToken.None);
+        result.Status.Should().Be(ExecutionStatus.Success);
+
+        var passed = (IFeatureSource)result.Outputs["output"]!;
+        var features = new List<IFeature>();
+        await foreach (var f in passed.GetFeaturesAsync(cancellationToken: TestContext.Current.CancellationToken)) features.Add(f);
+
+        features.Should().HaveCount(1, "大写 NAME 应大小写不敏感命中小写 name 列，要素应通过检查");
+    }
+
+    [Fact]
+    public void SchedulerErrorClassifier_FileNotFound_ReturnsInputNotFound()
+    {
+        // 回归 T7.2: 输入 SHP 缺失（ShapefileFeatureSource 构造抛 FileNotFoundException）
+        // 曾归类为笼统的 SCH_UNEXPECTED，现应为 SCH_INPUT_NOT_FOUND。
+        var code = SchedulerErrorClassifier.Classify(new FileNotFoundException("Shapefile not found", "a.shp"));
+        code.Should().Be(ErrorCode.SchInputNotFound);
+    }
+
+    [Fact]
+    public void SchedulerErrorClassifier_DirectoryNotFound_ReturnsInputNotFound()
+    {
+        var code = SchedulerErrorClassifier.Classify(new DirectoryNotFoundException("dir missing"));
+        code.Should().Be(ErrorCode.SchInputNotFound);
+    }
+
+    [Fact]
+    public void SchedulerErrorClassifier_DataSourceException_ReturnsDataSourceError()
+    {
+        // 回归 T7.3: PostGIS 目标表已存在，写出时 GDAL CreateLayer 失败，
+        // extern 抛 DataSourceException(:OguException)，应为 SCH_DATA_SOURCE_ERROR。
+        var code = SchedulerErrorClassifier.Classify(
+            new OpenGIS.Utils.Exception.DataSourceException("Failed to create layer"));
+        code.Should().Be(ErrorCode.SchDataSourceError);
+    }
+
+    [Fact]
+    public void SchedulerErrorClassifier_ConnectionArgumentException_ReturnsConnectionFailed()
+    {
+        // 回归 T7.4: PostGIS 密文非法，PostgisConnectionHelper 抛 ArgumentException(nameof(config))，
+        // 应复用既有的 ERR_DS_CONNECTION_FAILED，而非 SCH_UNEXPECTED。
+        var code = SchedulerErrorClassifier.Classify(
+            new ArgumentException("PostGIS EncryptedPassword 不是有效密文。", "config"));
+        code.Should().Be(ErrorCode.DsConnectionFailed);
+    }
+
+    [Fact]
+    public void SchedulerErrorClassifier_NotSupported_ReturnsUnsupportedBinding()
+    {
+        // SubPlan 绑定 / 无法识别的数据源类型 → SCH_UNSUPPORTED_BINDING。
+        var code = SchedulerErrorClassifier.Classify(new NotSupportedException("P1 不支持子方案绑定"));
+        code.Should().Be(ErrorCode.SchUnsupportedBinding);
+    }
+
+    [Fact]
+    public void SchedulerErrorClassifier_Unauthorized_ReturnsPermissionDenied()
+    {
+        var code = SchedulerErrorClassifier.Classify(new UnauthorizedAccessException("denied"));
+        code.Should().Be(ErrorCode.DsPermissionDenied);
+    }
+
+    [Fact]
+    public void SchedulerErrorClassifier_GenericException_ReturnsUnexpected()
+    {
+        // 未识别的异常仍回退到 SCH_UNEXPECTED（保持既有兜底语义，值不变）。
+        var code = SchedulerErrorClassifier.Classify(new InvalidOperationException("boom"));
+        code.Should().Be(ErrorCode.SchUnexpected);
+    }
+
+    [Fact]
+    public void SchedulerErrorClassifier_WrappedFileNotFound_WalksInnerChain()
+    {
+        // 兜底异常包裹 FileNotFoundException 时，应沿内部异常链找到更贴切的 SCH_INPUT_NOT_FOUND。
+        var code = SchedulerErrorClassifier.Classify(
+            new InvalidOperationException("wrapper", new FileNotFoundException("inner", "a.shp")));
+        code.Should().Be(ErrorCode.SchInputNotFound);
+    }
+
     private sealed class FakeOperator : IOperator
     {
         public FakeOperator(string id, string category) =>

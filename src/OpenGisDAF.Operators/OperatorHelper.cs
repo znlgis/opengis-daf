@@ -53,6 +53,56 @@ internal static class OperatorHelper
         };
     }
 
+    /// <summary>
+    /// 大小写不敏感地解析属性键：精确匹配优先，未命中再忽略大小写扫描既有键。
+    /// resolvedKey 为字典中实际存在的键；未命中时回退为 name（视为新字段）。
+    /// 取首个忽略大小写匹配，不会因仅大小写不同的重复键抛异常。返回值指示是否命中既有键。
+    /// </summary>
+    public static bool TryResolveAttributeKey(
+        IReadOnlyDictionary<string, object?> attributes, string name, out string resolvedKey)
+    {
+        if (attributes.ContainsKey(name))
+        {
+            resolvedKey = name;
+            return true;
+        }
+
+        foreach (var key in attributes.Keys)
+        {
+            if (string.Equals(key, name, StringComparison.OrdinalIgnoreCase))
+            {
+                resolvedKey = key;
+                return true;
+            }
+        }
+
+        resolvedKey = name;
+        return false;
+    }
+
+    /// <summary>
+    /// 大小写不敏感地读取属性值：精确匹配优先，未命中再忽略大小写扫描。
+    /// 语义与字典 TryGetValue 一致：键存在即返回 true，值可能为 null。
+    /// </summary>
+    public static bool TryGetAttributeValue(
+        IReadOnlyDictionary<string, object?> attributes, string name, out object? value)
+    {
+        if (attributes.TryGetValue(name, out value))
+            return true;
+
+        foreach (var kvp in attributes)
+        {
+            if (string.Equals(kvp.Key, name, StringComparison.OrdinalIgnoreCase))
+            {
+                value = kvp.Value;
+                return true;
+            }
+        }
+
+        value = null;
+        return false;
+    }
+
     public static string? GetStringParam(IReadOnlyDictionary<string, object?> parameters, string name)
     {
         if (!parameters.TryGetValue(name, out var val)) return null;

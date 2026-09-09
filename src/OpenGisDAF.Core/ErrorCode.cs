@@ -26,4 +26,10 @@ public static class ErrorCode
     public const string DataGeometryInvalid = "ERR_DATA_GEOMETRY_INVALID";
     public const string DataFieldMissing = "ERR_DATA_FIELD_MISSING";
     public const string DataValueOutOfRange = "ERR_DATA_VALUE_OUT_OF_RANGE";
+
+    // 调度层失败（输入/输出解析与数据流），发生在算子执行阶段之外，不参与重试。参见 docs/plan-config-guide.md。
+    public const string SchInputNotFound = "SCH_INPUT_NOT_FOUND";
+    public const string SchUnsupportedBinding = "SCH_UNSUPPORTED_BINDING";
+    public const string SchDataSourceError = "SCH_DATA_SOURCE_ERROR";
+    public const string SchUnexpected = "SCH_UNEXPECTED";
 }

@@ -180,21 +180,28 @@ public sealed class NullValueFiller : IOperator
             var results = new List<IFeature>();
             var total = 0;
             var filled = 0;
+            string? writeKey = null;
 
             await foreach (var feature in source.GetFeaturesAsync(cancellationToken: cancellationToken))
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 total++;
 
-                var currentValue = feature.Attributes.TryGetValue(targetField, out var v) ? v : null;
+                var currentValue = OperatorHelper.TryGetAttributeValue(feature.Attributes, targetField, out var v) ? v : null;
                 var isNull = currentValue is null || (currentValue is string s && s.Length == 0);
 
                 if (isNull)
                 {
                     filled++;
+                    if (writeKey is null)
+                    {
+                        OperatorHelper.TryResolveAttributeKey(feature.Attributes, targetField, out var resolvedKey);
+                        writeKey = resolvedKey;
+                    }
+
                     var attrs = new Dictionary<string, object?>(feature.Attributes)
                     {
-                        [targetField] = defaultValue
+                        [writeKey] = defaultValue
                     };
                     results.Add(new SimpleFeature(feature.Id, feature.Geometry, attrs));
                 }

@@ -230,7 +230,7 @@ public sealed class AttributeCompletenessChecker : IOperator
 
         foreach (var field in requiredFields)
         {
-            var hasValue = feature.Attributes.TryGetValue(field, out var value);
+            var hasValue = OperatorHelper.TryGetAttributeValue(feature.Attributes, field, out var value);
 
             if (!hasValue || value is null)
             {

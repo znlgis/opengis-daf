@@ -155,7 +155,7 @@ public sealed partial class SerialScheduler : ISchedulingEngine
                     }
                     catch (Exception ex)
                     {
-                        RecordFailedItem(item, itemSw.Elapsed, "SCH_UNEXPECTED", ex.Message,
+                        RecordFailedItem(item, itemSw.Elapsed, SchedulerErrorClassifier.Classify(ex), ex.Message,
                             failedItemIds, itemStats);
                         if (plan.ExecutionPolicy.FailurePolicy == FailurePolicy.StopOnAny)
                         {
