@@ -5,7 +5,7 @@
 $ErrorActionPreference = "Stop"
 
 # 切换到 demo 目录（所有方案内的相对路径以 demo 为基准）
-$demoDir = SplitPath -Parent $MyInvocation.MyCommand.Path
+$demoDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $demoDir
 
 $repoRoot = Resolve-Path (Join-Path $demoDir "..")
